@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>SimplePLCDriverCore</RootNamespace>
+    <AssemblyName>SimplePLCDriverCore</AssemblyName>
+    <Description>Native .NET Core library for PLC communication - supports Allen-Bradley, Siemens, Omron, and Modbus</Description>
+    <PackageId>SimplePLCDriverCore</PackageId>
+    <Version>0.1.0</Version>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.IO.Pipelines" Version="8.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="SimplePLCDriverCore.Tests" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,14 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/SimplePLCDriverCore/SimplePLCDriverCore.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/SimplePLCDriverCore.Tests/SimplePLCDriverCore.Tests.csproj" />
+  </Folder>
+  <Folder Name="/examples/">
+    <Project Path="src/Examples/BasicReadWrite/BasicReadWrite.csproj" />
+    <Project Path="src/Examples/BatchOperations/BatchOperations.csproj" />
+    <Project Path="src/Examples/TagBrowsing/TagBrowsing.csproj" />
+    <Project Path="src/Examples/ConnectionManagement/ConnectionManagement.csproj" />
+  </Folder>
+</Solution>
