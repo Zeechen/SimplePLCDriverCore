@@ -1,8 +1,8 @@
 // =============================================================================
 // ConnectionManagement Example - SimplePLCDriverCore
 // =============================================================================
-// Demonstrates connection options, reconnection, cancellation,
-// and proper resource management patterns.
+// Demonstrates connection options, retry policies, connection pooling,
+// cancellation, and proper resource management patterns.
 // =============================================================================
 
 using SimplePLCDriverCore.Common;
@@ -60,6 +60,13 @@ var options = new ConnectionOptions
     AutoReconnect = true,
     MaxReconnectAttempts = 5,
     ReconnectDelay = TimeSpan.FromSeconds(3),
+
+    // Use exponential backoff with jitter for reconnection instead of fixed delay.
+    // This overrides MaxReconnectAttempts/ReconnectDelay when set.
+    ReconnectPolicy = RetryPolicy.ExponentialBackoff(
+        maxAttempts: 5,
+        baseDelay: TimeSpan.FromSeconds(1),
+        maxDelay: TimeSpan.FromSeconds(30)),
 
     // Processor slot (0 for CompactLogix)
     Slot = 0,
@@ -178,6 +185,91 @@ await using (var plc = PlcDriverFactory.CreateLogix("192.168.1.100"))
     {
         Console.WriteLine("Polling stopped");
     }
+}
+
+// =============================================================================
+// 8. Retry Policy - Custom Strategies
+// =============================================================================
+
+Console.WriteLine("\n--- Retry Policies ---\n");
+
+// Fixed delay: wait 2 seconds between each of 3 attempts
+var fixedPolicy = RetryPolicy.FixedDelay(maxAttempts: 3, delay: TimeSpan.FromSeconds(2));
+Console.WriteLine($"Fixed: {fixedPolicy.MaxAttempts} attempts, {fixedPolicy.BaseDelay.TotalSeconds}s delay");
+
+// Exponential backoff: 1s -> 2s -> 4s -> 8s (with jitter to prevent thundering herd)
+var expPolicy = RetryPolicy.ExponentialBackoff(
+    maxAttempts: 4,
+    baseDelay: TimeSpan.FromSeconds(1),
+    maxDelay: TimeSpan.FromSeconds(30),
+    useJitter: true);
+Console.WriteLine($"Exponential: {expPolicy.MaxAttempts} attempts, backoff={expPolicy.UseExponentialBackoff}, jitter={expPolicy.UseJitter}");
+
+// IO-only retry: only retries IOException/SocketException, ignores others
+var ioPolicy = RetryPolicy.IoRetry(maxAttempts: 2);
+Console.WriteLine($"IO-only: {ioPolicy.MaxAttempts} attempts, filters non-IO exceptions");
+
+// Default reconnect: used by ConnectionManager when no explicit policy is set
+var defaultPolicy = RetryPolicy.DefaultReconnect();
+Console.WriteLine($"Default: {defaultPolicy.MaxAttempts} attempts, base={defaultPolicy.BaseDelay.TotalSeconds}s");
+
+// Apply a policy to connection options
+var retryOptions = new ConnectionOptions
+{
+    AutoReconnect = true,
+    ReconnectPolicy = RetryPolicy.ExponentialBackoff(5, TimeSpan.FromSeconds(2)),
+};
+Console.WriteLine($"\nOptions with exponential backoff configured");
+
+// =============================================================================
+// 9. Connection Pool - Multi-PLC Management
+// =============================================================================
+
+Console.WriteLine("\n--- Connection Pool ---\n");
+
+await using (var pool = new ConnectionPool())
+{
+    // Register multiple PLCs by name
+    pool.Register("Line1_PLC", "192.168.1.100");
+    pool.Register("Line2_PLC", "192.168.1.101", slot: 2);
+    pool.Register("Packaging", "192.168.1.102", options: new ConnectionOptions
+    {
+        RequestTimeout = TimeSpan.FromSeconds(20),
+        ReconnectPolicy = RetryPolicy.ExponentialBackoff(5, TimeSpan.FromSeconds(1)),
+    });
+
+    Console.WriteLine($"Registered: {string.Join(", ", pool.RegisteredNames)}");
+    Console.WriteLine($"Connected: {string.Join(", ", pool.ConnectedNames)}"); // empty - lazy connect
+
+    // Get a driver by name - connects lazily on first access
+    try
+    {
+        var line1 = await pool.GetAsync("Line1_PLC");
+        Console.WriteLine($"Line1 connected: {line1.IsConnected}");
+
+        var result = await line1.ReadAsync("ProductCount");
+        Console.WriteLine($"ProductCount = {result.Value}");
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"Line1 connection failed (expected in demo): {ex.Message}");
+    }
+
+    // Check connection status
+    Console.WriteLine($"Line1 connected: {pool.IsConnected("Line1_PLC")}");
+    Console.WriteLine($"Line2 connected: {pool.IsConnected("Line2_PLC")}");
+
+    // Disconnect a specific PLC (registration preserved for reconnect)
+    await pool.DisconnectAsync("Line1_PLC");
+
+    // Unregister removes the registration entirely
+    await pool.UnregisterAsync("Packaging");
+    Console.WriteLine($"After unregister: {string.Join(", ", pool.RegisteredNames)}");
+
+    // Disconnect all active connections at once
+    await pool.DisconnectAllAsync();
+
+    // Pool.DisposeAsync() is called automatically by 'await using'
 }
 
 Console.WriteLine("\nDone!");

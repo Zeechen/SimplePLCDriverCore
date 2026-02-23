@@ -120,11 +120,12 @@ SimplePLCDriverCore/
 |   |   |   |   +-- TcpTransport.cs              # Async TCP socket wrapper
 |   |   |   |   +-- ITransport.cs                # Transport abstraction
 |   |   |   +-- Buffers/
-|   |   |   |   +-- PacketBuffer.cs              # High-perf buffer (System.Buffers)
-|   |   |   |   +-- PacketReader.cs              # Little/big endian reader
-|   |   |   |   +-- PacketWriter.cs              # Little/big endian writer
-|   |   |   +-- ConnectionPool.cs                # Connection pooling
-|   |   |   +-- RetryPolicy.cs                   # Reconnection logic
+|   |   |   |   +-- PacketReader.cs              # Zero-alloc little/big endian reader (ref struct)
+|   |   |   |   +-- PacketWriter.cs              # Pooled little/big endian writer
+|   |   |   +-- ConnectionManager.cs             # Connection lifecycle + keepalive + auto-reconnect
+|   |   |   +-- ConnectionOptions.cs             # Connection configuration
+|   |   |   +-- ConnectionPool.cs                # Named multi-PLC connection pool (lazy connect)
+|   |   |   +-- RetryPolicy.cs                   # Fixed/exponential/jitter retry strategies
 |   |   |
 |   |   +-- Protocols/
 |   |   |   +-- EtherNetIP/                      # EtherNet/IP + CIP stack
@@ -711,46 +712,47 @@ For UDTs:
 **Goal**: Full read/write support for ControlLogix/CompactLogix with typeless access and batch operations.
 
 #### Week 1-2: Transport & EtherNet/IP Layer
-- [ ] Project scaffolding (.sln, .csproj, folder structure)
-- [ ] `TcpTransport` - async TCP with `System.IO.Pipelines`
-- [ ] `EipEncapsulation` - 24-byte header encode/decode
-- [ ] `EipSession` - RegisterSession/UnregisterSession
-- [ ] `PacketReader`/`PacketWriter` - binary serialization helpers
-- [ ] Unit tests for all packet encoding/decoding
+- [x] Project scaffolding (.sln, .csproj, folder structure)
+- [x] `TcpTransport` - async TCP with `System.IO.Pipelines`
+- [x] `EipEncapsulation` - 24-byte header encode/decode
+- [x] `EipSession` - RegisterSession/UnregisterSession
+- [x] `PacketReader`/`PacketWriter` - binary serialization helpers
+- [x] Unit tests for all packet encoding/decoding
 
 #### Week 3: CIP Connection Management
-- [ ] `CipPath` - symbolic segment encoding, route path building
-- [ ] `ForwardOpen` / `LargeForwardOpen` / `ForwardClose`
-- [ ] Connected messaging (SendUnitData) with sequence tracking
-- [ ] Unconnected messaging (SendRRData) support
-- [ ] Connection timeout and keepalive handling
+- [x] `CipPath` - symbolic segment encoding, route path building
+- [x] `ForwardOpen` / `LargeForwardOpen` / `ForwardClose`
+- [x] Connected messaging (SendUnitData) with sequence tracking
+- [x] Unconnected messaging (SendRRData) support
+- [x] Connection timeout and keepalive handling
 
 #### Week 4: Tag Operations
-- [ ] `ReadTag` (0x4C) and `WriteTag` (0x4D) single tag ops
-- [ ] `ReadTagFragmented` (0x52) / `WriteTagFragmented` (0x53)
-- [ ] `MultipleServicePacket` (0x0A) - batch request builder
-- [ ] Auto-splitting oversized batch requests
-- [ ] CIP data type codec (all atomic types)
-- [ ] Array read/write support
+- [x] `ReadTag` (0x4C) and `WriteTag` (0x4D) single tag ops
+- [x] `ReadTagFragmented` (0x52) / `WriteTagFragmented` (0x53)
+- [x] `MultipleServicePacket` (0x0A) - batch request builder
+- [x] Auto-splitting oversized batch requests
+- [x] CIP data type codec (all atomic types)
+- [x] Array read/write support
 
 #### Week 5: Metadata Discovery & Type System
-- [ ] `SymbolObject` - tag list upload (Class 0x6B)
-- [ ] `TemplateObject` - UDT definition reading (Class 0x6C)
-- [ ] `DataTypeRegistry` - cache tag types and UDT definitions
-- [ ] `PlcValue` - universal value wrapper with conversions
-- [ ] `StructureDecoder` / `StructureEncoder` for UDTs
-- [ ] Program-scoped tag support
-- [ ] String type handling
+- [x] `SymbolObject` - tag list upload (Class 0x6B)
+- [x] `TemplateObject` - UDT definition reading (Class 0x6C)
+- [x] `DataTypeRegistry` - cache tag types and UDT definitions (`TagDatabase`)
+- [x] `PlcValue` - universal value wrapper with conversions (`PlcTagValue`)
+- [x] `StructureDecoder` / `StructureEncoder` for UDTs
+- [x] Program-scoped tag support
+- [x] String type handling
 
 #### Week 6: LogixDriver Integration & Testing
-- [ ] `LogixDriver` - high-level API combining all above
-- [ ] `IPlcDriver` and `ITagBrowser` implementation
-- [ ] `PlcDriverFactory` - driver creation
-- [ ] Error handling and CIP status code mapping
-- [ ] Reconnection logic
-- [ ] Integration tests with real ControlLogix/CompactLogix PLC
-- [ ] Sample applications
-- [ ] NuGet package setup
+- [x] `LogixDriver` - high-level API combining all above
+- [x] `IPlcDriver` and `ITagBrowser` implementation
+- [x] `PlcDriverFactory` - driver creation
+- [x] Error handling and CIP status code mapping
+- [x] `RetryPolicy` - configurable retry with fixed delay, exponential backoff, jitter
+- [x] `ConnectionPool` - named multi-PLC connection management with lazy connect
+- [x] Reconnection logic (via `RetryPolicy` integrated into `ConnectionManager`)
+- [x] Sample applications (BasicReadWrite, BatchOperations, TagBrowsing, ConnectionManagement)
+- [x] NuGet package setup
 
 ### Phase 2: SLC/MicroLogix/PLC-5 Support (Weeks 7-9)
 
@@ -824,19 +826,31 @@ Most tag operations complete synchronously when data is already buffered. `Value
 
 ### 8.4 Connection Pooling Strategy
 
-For applications monitoring hundreds of tags across multiple PLCs:
+**Implemented**: `ConnectionPool` provides named multi-PLC connection management with lazy connect:
 
 ```csharp
-// Connection pool manages PLC connections
-services.AddSimplePlcDriver(options =>
+await using var pool = new ConnectionPool();
+
+// Register PLCs by name with individual options
+pool.Register("Line1_PLC", "192.168.1.100");
+pool.Register("Line2_PLC", "192.168.1.101", slot: 2);
+pool.Register("Packaging", "192.168.1.102", options: new ConnectionOptions
 {
-    options.AddLogix("PLC1", "192.168.1.100");
-    options.AddLogix("PLC2", "192.168.1.101");
-    options.AddSiemens("PLC3", "192.168.1.200", rack: 0, slot: 1);
-    options.ConnectionTimeout = TimeSpan.FromSeconds(5);
-    options.AutoReconnect = true;
+    ReconnectPolicy = RetryPolicy.ExponentialBackoff(5, TimeSpan.FromSeconds(1)),
 });
+
+// Drivers connect lazily on first GetAsync call
+var line1 = await pool.GetAsync("Line1_PLC");
+var result = await line1.ReadAsync("ProductCount");
+
+// Lifecycle management
+await pool.DisconnectAsync("Line1_PLC");    // disconnect one (registration preserved)
+await pool.UnregisterAsync("Packaging");     // remove entirely
+await pool.DisconnectAllAsync();             // disconnect all (registrations preserved)
+// pool.DisposeAsync() disconnects everything
 ```
+
+**Future**: DI integration (`services.AddSimplePlcDriver(...)`) will be in the optional `SimplePLCDriverCore.Extensions` package.
 
 ### 8.5 Target Framework
 

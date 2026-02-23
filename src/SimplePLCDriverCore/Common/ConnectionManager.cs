@@ -216,9 +216,11 @@ internal sealed class ConnectionManager : IAsyncDisposable, IDisposable
         {
             StopKeepAlive();
 
-            for (var attempt = 1; attempt <= _options.MaxReconnectAttempts; attempt++)
+            var policy = _options.GetEffectiveReconnectPolicy();
+
+            try
             {
-                try
+                await policy.ExecuteAsync(async (attempt, token) =>
                 {
                     // Clean up old connection
                     if (_session != null)
@@ -234,19 +236,16 @@ internal sealed class ConnectionManager : IAsyncDisposable, IDisposable
                         _transport = null;
                     }
 
-                    await Task.Delay(_options.ReconnectDelay, ct).ConfigureAwait(false);
-                    await ConnectInternalAsync(ct).ConfigureAwait(false);
+                    await ConnectInternalAsync(token).ConfigureAwait(false);
                     StartKeepAlive();
-                    return;
-                }
-                catch (Exception) when (attempt < _options.MaxReconnectAttempts)
-                {
-                    // Try again
-                }
+                }, ct).ConfigureAwait(false);
             }
-
-            throw new IOException(
-                $"Failed to reconnect to {_host} after {_options.MaxReconnectAttempts} attempts");
+            catch (RetryExhaustedException ex)
+            {
+                throw new IOException(
+                    $"Failed to reconnect to {_host} after {policy.MaxAttempts} attempts",
+                    ex.InnerException);
+            }
         }
         finally
         {

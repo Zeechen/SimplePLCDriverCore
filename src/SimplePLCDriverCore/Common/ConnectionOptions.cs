@@ -40,4 +40,20 @@ public sealed class ConnectionOptions
     /// CIP connection size in bytes. 0 = auto-negotiate (try Large Forward Open 4002 first).
     /// </summary>
     public int ConnectionSize { get; set; } = 0;
+
+    /// <summary>
+    /// Retry policy for reconnection attempts. If null, a default policy is created
+    /// from MaxReconnectAttempts and ReconnectDelay (fixed delay, for backwards compatibility).
+    /// Set this to use exponential backoff, jitter, or custom retry logic.
+    /// </summary>
+    public RetryPolicy? ReconnectPolicy { get; set; }
+
+    /// <summary>
+    /// Gets the effective retry policy, either the explicitly configured one
+    /// or one built from the legacy MaxReconnectAttempts/ReconnectDelay settings.
+    /// </summary>
+    internal RetryPolicy GetEffectiveReconnectPolicy()
+    {
+        return ReconnectPolicy ?? RetryPolicy.FixedDelay(MaxReconnectAttempts, ReconnectDelay);
+    }
 }
