@@ -10,5 +10,6 @@
     <Project Path="src/Examples/BatchOperations/BatchOperations.csproj" />
     <Project Path="src/Examples/TagBrowsing/TagBrowsing.csproj" />
     <Project Path="src/Examples/ConnectionManagement/ConnectionManagement.csproj" />
+    <Project Path="src/Examples/SlcReadWrite/SlcReadWrite.csproj" />
   </Folder>
 </Solution>

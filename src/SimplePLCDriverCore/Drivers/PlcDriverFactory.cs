@@ -38,4 +38,45 @@ public static class PlcDriverFactory
     {
         return new LogixDriver(host, slot, options);
     }
+
+    // --- SLC / MicroLogix / PLC-5 ---
+
+    /// <summary>
+    /// Create a driver for Allen-Bradley SLC 500 PLCs.
+    /// Uses PCCC over CIP with file-based addressing (N7:0, F8:1, B3:0/5, etc.).
+    /// </summary>
+    /// <param name="host">PLC IP address or hostname.</param>
+    /// <param name="slot">Processor slot number. Default 0.</param>
+    /// <param name="options">Optional connection options.</param>
+    public static SlcDriver CreateSlc(
+        string host, byte slot = 0, ConnectionOptions? options = null)
+    {
+        return new SlcDriver(host, slot, SlcPlcType.Slc500, options);
+    }
+
+    /// <summary>
+    /// Create a driver for Allen-Bradley MicroLogix PLCs (1000, 1100, 1200, 1400, 1500).
+    /// Uses PCCC over CIP with file-based addressing.
+    /// </summary>
+    /// <param name="host">PLC IP address or hostname.</param>
+    /// <param name="slot">Processor slot number. Default 0.</param>
+    /// <param name="options">Optional connection options.</param>
+    public static SlcDriver CreateMicroLogix(
+        string host, byte slot = 0, ConnectionOptions? options = null)
+    {
+        return new SlcDriver(host, slot, SlcPlcType.MicroLogix, options);
+    }
+
+    /// <summary>
+    /// Create a driver for Allen-Bradley PLC-5 over Ethernet.
+    /// Uses PCCC over CIP with file-based addressing.
+    /// </summary>
+    /// <param name="host">PLC IP address or hostname.</param>
+    /// <param name="slot">Processor slot number. Default 0.</param>
+    /// <param name="options">Optional connection options.</param>
+    public static SlcDriver CreatePlc5(
+        string host, byte slot = 0, ConnectionOptions? options = null)
+    {
+        return new SlcDriver(host, slot, SlcPlcType.Plc5, options);
+    }
 }

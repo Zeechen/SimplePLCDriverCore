@@ -18,14 +18,16 @@ A native .NET Core library for reading and writing PLC tags. No C/C++ wrappers, 
 |---|---|---|
 | Allen-Bradley ControlLogix | Supported | EtherNet/IP + CIP |
 | Allen-Bradley CompactLogix | Supported | EtherNet/IP + CIP |
-| Allen-Bradley SLC 500 | Planned (Phase 2) | PCCC over CIP |
-| Allen-Bradley MicroLogix | Planned (Phase 2) | PCCC over CIP |
-| Allen-Bradley PLC-5 | Planned (Phase 2) | PCCC over CIP |
+| Allen-Bradley SLC 500 | Supported | PCCC over CIP |
+| Allen-Bradley MicroLogix | Supported | PCCC over CIP |
+| Allen-Bradley PLC-5 | Supported | PCCC over CIP |
 | Siemens S7-300/400/1200/1500 | Planned (Phase 3) | S7comm |
 | Omron NJ/NX/CJ/CP | Planned (Phase 3) | FINS |
 | Modbus TCP devices | Planned (Phase 4) | Modbus TCP |
 
 ## Supported Data Types
+
+### Logix (ControlLogix / CompactLogix)
 
 | PLC Type | .NET Type | Code |
 |---|---|---|
@@ -42,6 +44,23 @@ A native .NET Core library for reading and writing PLC tags. No C/C++ wrappers, 
 | LREAL | `double` | 0xCB |
 | STRING | `string` | 0xDA |
 | UDT/Structure | JSON / typed object / `Dictionary<string, PlcTagValue>` | 0x8xxx |
+
+### SLC 500 / MicroLogix / PLC-5 (PCCC)
+
+| File Type | Prefix | .NET Type | Element Size |
+|---|---|---|---|
+| Integer | N | `short` | 2 bytes |
+| Float | F | `float` | 4 bytes |
+| Long Integer | L | `int` | 4 bytes |
+| Bit | B | `bool` (per bit) | 2 bytes (word) |
+| Timer | T | Structure (PRE/ACC/EN/TT/DN) | 6 bytes |
+| Counter | C | Structure (PRE/ACC/CU/CD/DN) | 6 bytes |
+| Control | R | Structure (LEN/POS/EN/EU/DN) | 6 bytes |
+| String | ST | `string` | 84 bytes |
+| Output | O | `short` | 2 bytes |
+| Input | I | `short` | 2 bytes |
+| Status | S | `short` | 2 bytes |
+| ASCII | A | `short` | 2 bytes |
 
 ## Quick Start
 
@@ -316,19 +335,66 @@ await using var controlLogix = PlcDriverFactory.CreateControlLogix("192.168.1.10
 await using var plc = PlcDriverFactory.CreateLogix("192.168.1.100", slot: 0);
 ```
 
+### SLC 500 / MicroLogix / PLC-5
+
+```csharp
+using SimplePLCDriverCore.Drivers;
+
+// SLC 500
+await using var slc = PlcDriverFactory.CreateSlc("192.168.1.50");
+await slc.ConnectAsync();
+
+// MicroLogix
+await using var mlx = PlcDriverFactory.CreateMicroLogix("192.168.1.60");
+
+// PLC-5
+await using var plc5 = PlcDriverFactory.CreatePlc5("192.168.1.70");
+```
+
+### SLC File-Based Addressing
+
+```csharp
+// Read integer, float, bit, string
+var intResult = await slc.ReadAsync("N7:0");       // Integer file 7, element 0
+var floatResult = await slc.ReadAsync("F8:1");     // Float file 8, element 1
+var bitResult = await slc.ReadAsync("B3:0/5");     // Bit file 3, element 0, bit 5
+var strResult = await slc.ReadAsync("ST9:0");      // String file 9, element 0
+var longResult = await slc.ReadAsync("L10:0");     // Long integer file 10, element 0
+
+// Read timer/counter structures
+var timer = await slc.ReadAsync("T4:0");           // Full timer structure
+var members = timer.Value.AsStructure();
+Console.WriteLine($"PRE={members!["PRE"]}, ACC={members["ACC"]}, DN={members["DN"]}");
+
+// Read timer sub-elements
+var acc = await slc.ReadAsync("T4:0.ACC");         // Accumulator only
+var pre = await slc.ReadAsync("T4:0.PRE");         // Preset only
+var en = await slc.ReadAsync("T4:0.EN");           // Enable bit
+
+// Write values
+await slc.WriteAsync("N7:0", 42);
+await slc.WriteAsync("F8:0", 3.14f);
+await slc.WriteAsync("B3:0/5", true);              // Read-modify-write for bits
+await slc.WriteAsync("ST9:0", "Hello SLC!");
+await slc.WriteAsync("T4:0.PRE", (short)5000);     // Write timer preset
+
+// Batch operations (sequential - PCCC does not support batching)
+var results = await slc.ReadAsync(new[] { "N7:0", "N7:1", "F8:0" });
+```
+
 ## Architecture
 
 ```
-+-------------------------------------------+
-|     LogixDriver (IPlcDriver + ITagBrowser) |   Drivers/
-|  ReadAsync, WriteAsync, GetTagsAsync, ...  |
-+-------------------------------------------+
-|        TagOperations + TagDatabase         |   TypeSystem/
-|  Batch, fragmented, structure decode/encode|
-+-------------------------------------------+
++-------------------------------------------+-------------------------------------------+
+|  LogixDriver (IPlcDriver + ITagBrowser)   |  SlcDriver (IPlcDriver)                   |
+|  ReadAsync, WriteAsync, GetTagsAsync, ... |  ReadAsync, WriteAsync (file-based addr)  |
++-------------------------------------------+-------------------------------------------+
+|  TagOperations + TagDatabase              |  PcccCommand + PcccTypes + PcccAddress    |
+|  Batch, fragmented, structure decode      |  PCCC frame build/parse, type mapping     |
++-------------------------------------------+-------------------------------------------+
 |         CIP Application Layer              |   Protocols/EtherNetIP/Cip/
 |  ReadTag, WriteTag, MultiServicePacket,    |
-|  ForwardOpen, SymbolObject, TemplateObject |
+|  ForwardOpen, Execute PCCC (0x4B)          |
 +-------------------------------------------+
 |       EtherNet/IP Encapsulation            |   Protocols/EtherNetIP/
 |  RegisterSession, SendRRData, SendUnitData |
@@ -357,15 +423,18 @@ SimplePLCDriverCore/
       Abstractions/                # Public interfaces (IPlcDriver, ITagBrowser, PlcTagValue, TagResult)
       Common/                      # Transport, buffers, connection management, retry, pooling
       Protocols/EtherNetIP/        # EtherNet/IP + CIP protocol implementation
-      Drivers/                     # High-level drivers (LogixDriver)
+        Cip/                       # CIP services, types, paths, tag operations
+        Pccc/                      # PCCC protocol (SLC/MicroLogix/PLC-5)
+      Drivers/                     # High-level drivers (LogixDriver, SlcDriver)
       TypeSystem/                  # Tag database, structure decode/encode
     Examples/                      # Usage examples
-      BasicReadWrite/              # Single tag read/write
+      BasicReadWrite/              # Logix tag read/write
       BatchOperations/             # High-performance batch operations
       TagBrowsing/                 # Metadata discovery
       ConnectionManagement/        # Connection options and patterns
+      SlcReadWrite/                # SLC/MicroLogix/PLC-5 read/write
   tests/
-    SimplePLCDriverCore.Tests/     # Unit tests (331 tests)
+    SimplePLCDriverCore.Tests/     # Unit tests (479 tests)
 ```
 
 ## Requirements
