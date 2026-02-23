@@ -9,7 +9,8 @@ A native .NET Core library for reading and writing PLC tags. No C/C++ wrappers, 
 - **Full metadata discovery** - Browse all tags, programs, and UDT definitions programmatically. The driver uploads the complete tag database on connect.
 - **UDT structure support** - Read/write User Defined Types as JSON strings, strongly-typed objects, or dictionaries. Partial writes update only specified fields.
 - **Native async/await** - Built on `ValueTask`, `System.IO.Pipelines`, and `ArrayPool<byte>` for zero-allocation hot paths.
-- **Auto-reconnect** - Configurable connection recovery with keepalive.
+- **Auto-reconnect** - Configurable connection recovery with keepalive and retry policies (fixed delay, exponential backoff with jitter).
+- **Connection pooling** - Manage multiple named PLC connections with lazy connect and lifecycle management.
 
 ## Supported PLCs
 
@@ -238,6 +239,70 @@ await using var plc = PlcDriverFactory.CreateLogix("192.168.1.100", options: opt
 await plc.ConnectAsync();
 ```
 
+### Retry Policies
+
+```csharp
+using SimplePLCDriverCore.Common;
+
+// Fixed delay: 2 seconds between each of 3 attempts
+var options = new ConnectionOptions
+{
+    AutoReconnect = true,
+    ReconnectPolicy = RetryPolicy.FixedDelay(maxAttempts: 3, delay: TimeSpan.FromSeconds(2)),
+};
+
+// Exponential backoff with jitter: 1s -> 2s -> 4s -> 8s (+ random 0-50%)
+// Prevents thundering herd when multiple connections retry simultaneously
+var options2 = new ConnectionOptions
+{
+    AutoReconnect = true,
+    ReconnectPolicy = RetryPolicy.ExponentialBackoff(
+        maxAttempts: 5,
+        baseDelay: TimeSpan.FromSeconds(1),
+        maxDelay: TimeSpan.FromSeconds(30)),
+};
+
+// RetryPolicy can also be used standalone for your own operations
+var policy = RetryPolicy.ExponentialBackoff(3, TimeSpan.FromSeconds(1));
+await policy.ExecuteAsync(async (attempt, ct) =>
+{
+    Console.WriteLine($"Attempt {attempt}...");
+    // your operation here
+}, cancellationToken);
+```
+
+### Connection Pool (Multi-PLC)
+
+```csharp
+using SimplePLCDriverCore.Common;
+
+await using var pool = new ConnectionPool();
+
+// Register PLCs by name
+pool.Register("Line1", "192.168.1.100");
+pool.Register("Line2", "192.168.1.101", slot: 2);
+pool.Register("Packaging", "192.168.1.102", options: new ConnectionOptions
+{
+    ReconnectPolicy = RetryPolicy.ExponentialBackoff(5, TimeSpan.FromSeconds(1)),
+});
+
+// Drivers connect lazily on first access
+var line1 = await pool.GetAsync("Line1");
+var result = await line1.ReadAsync("ProductCount");
+
+// Check status
+Console.WriteLine(pool.IsConnected("Line1"));    // true
+Console.WriteLine(pool.IsConnected("Line2"));    // false (not yet accessed)
+
+// Disconnect one (registration preserved - GetAsync will reconnect)
+await pool.DisconnectAsync("Line1");
+
+// Remove entirely
+await pool.UnregisterAsync("Packaging");
+
+// pool.DisposeAsync() disconnects everything
+```
+
 ### ControlLogix vs CompactLogix
 
 ```csharp
@@ -290,7 +355,7 @@ SimplePLCDriverCore/
   src/
     SimplePLCDriverCore/           # Core library
       Abstractions/                # Public interfaces (IPlcDriver, ITagBrowser, PlcTagValue, TagResult)
-      Common/                      # Transport, buffers, connection management
+      Common/                      # Transport, buffers, connection management, retry, pooling
       Protocols/EtherNetIP/        # EtherNet/IP + CIP protocol implementation
       Drivers/                     # High-level drivers (LogixDriver)
       TypeSystem/                  # Tag database, structure decode/encode
@@ -300,7 +365,7 @@ SimplePLCDriverCore/
       TagBrowsing/                 # Metadata discovery
       ConnectionManagement/        # Connection options and patterns
   tests/
-    SimplePLCDriverCore.Tests/     # Unit tests (275 tests)
+    SimplePLCDriverCore.Tests/     # Unit tests (331 tests)
 ```
 
 ## Requirements
