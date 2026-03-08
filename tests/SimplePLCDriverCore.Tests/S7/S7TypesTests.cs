@@ -243,4 +243,228 @@ public class S7TypesTests
             S7TransportSize.Byte, 22, false, isString: true, stringMaxLength: 20);
         Assert.Equal(PlcDataType.String, S7Types.ToPlcDataType(addr));
     }
+
+    // ==========================================================================
+    // DecodeValue - Error/Edge Cases
+    // ==========================================================================
+
+    [Fact]
+    public void DecodeValue_Bit_EmptyData_Throws()
+    {
+        var addr = S7Address.Parse("DB1.DBX0.0");
+        Assert.Throws<InvalidOperationException>(() => S7Types.DecodeValue(ReadOnlySpan<byte>.Empty, addr));
+    }
+
+    [Fact]
+    public void DecodeValue_Word_TooShort_Throws()
+    {
+        var addr = S7Address.Parse("DB1.DBW0");
+        Assert.Throws<InvalidOperationException>(() => S7Types.DecodeValue(new byte[1], addr));
+    }
+
+    [Fact]
+    public void DecodeValue_DWord_TooShort_Throws()
+    {
+        var addr = S7Address.Parse("DB1.DBD0");
+        Assert.Throws<InvalidOperationException>(() => S7Types.DecodeValue(new byte[2], addr));
+    }
+
+    [Fact]
+    public void DecodeValue_Real_TooShort_Throws()
+    {
+        var addr = new S7Address(S7Area.DataBlock, 1, 0, 0, S7TransportSize.Real, 4, false);
+        Assert.Throws<InvalidOperationException>(() => S7Types.DecodeValue(new byte[2], addr));
+    }
+
+    [Fact]
+    public void DecodeValue_Timer_TooShort_Throws()
+    {
+        var addr = S7Address.Parse("T0");
+        Assert.Throws<InvalidOperationException>(() => S7Types.DecodeValue(new byte[1], addr));
+    }
+
+    [Fact]
+    public void DecodeValue_Byte_TooShort_Throws()
+    {
+        var addr = S7Address.Parse("DB1.DBB0");
+        Assert.Throws<InvalidOperationException>(() => S7Types.DecodeValue(ReadOnlySpan<byte>.Empty, addr));
+    }
+
+    // ==========================================================================
+    // DecodeValue - Int and DInt transport sizes
+    // ==========================================================================
+
+    [Fact]
+    public void DecodeValue_IntTransportSize()
+    {
+        var addr = new S7Address(S7Area.DataBlock, 1, 0, 0, S7TransportSize.Int, 2, false);
+        var data = new byte[2];
+        BinaryPrimitives.WriteInt16BigEndian(data, -500);
+        var result = S7Types.DecodeValue(data, addr);
+        Assert.Equal(-500, result.AsInt32());
+    }
+
+    [Fact]
+    public void DecodeValue_DIntTransportSize()
+    {
+        var addr = new S7Address(S7Area.DataBlock, 1, 0, 0, S7TransportSize.DInt, 4, false);
+        var data = new byte[4];
+        BinaryPrimitives.WriteInt32BigEndian(data, -100000);
+        var result = S7Types.DecodeValue(data, addr);
+        Assert.Equal(-100000, result.AsInt32());
+    }
+
+    // ==========================================================================
+    // EncodeValue - Additional Types
+    // ==========================================================================
+
+    [Fact]
+    public void EncodeValue_Timer()
+    {
+        var addr = S7Address.Parse("T0");
+        var data = S7Types.EncodeValue((short)500, addr);
+        Assert.Equal(2, data.Length);
+        Assert.Equal(500, BinaryPrimitives.ReadInt16BigEndian(data));
+    }
+
+    [Fact]
+    public void EncodeValue_Counter()
+    {
+        var addr = S7Address.Parse("C0");
+        var data = S7Types.EncodeValue((short)42, addr);
+        Assert.Equal(2, data.Length);
+        Assert.Equal(42, BinaryPrimitives.ReadInt16BigEndian(data));
+    }
+
+    [Fact]
+    public void EncodeValue_IntTransportSize()
+    {
+        var addr = new S7Address(S7Area.DataBlock, 1, 0, 0, S7TransportSize.Int, 2, false);
+        var data = S7Types.EncodeValue((short)1234, addr);
+        Assert.Equal(2, data.Length);
+        Assert.Equal(1234, BinaryPrimitives.ReadInt16BigEndian(data));
+    }
+
+    [Fact]
+    public void EncodeValue_DIntTransportSize()
+    {
+        var addr = new S7Address(S7Area.DataBlock, 1, 0, 0, S7TransportSize.DInt, 4, false);
+        var data = S7Types.EncodeValue(123456, addr);
+        Assert.Equal(4, data.Length);
+        Assert.Equal(123456, BinaryPrimitives.ReadInt32BigEndian(data));
+    }
+
+    [Fact]
+    public void EncodeValue_String()
+    {
+        var addr = new S7Address(S7Area.DataBlock, 1, 0, 0, S7TransportSize.Byte, 22, false, isString: true, stringMaxLength: 20);
+        var data = S7Types.EncodeValue("Test", addr);
+        Assert.Equal(22, data.Length);
+        Assert.Equal(20, data[0]); // max
+        Assert.Equal(4, data[1]);  // actual
+    }
+
+    // ==========================================================================
+    // EncodeString edge cases
+    // ==========================================================================
+
+    [Fact]
+    public void EncodeString_DefaultMaxLength()
+    {
+        var encoded = S7Types.EncodeString("Hi", 0);
+        Assert.Equal(256, encoded.Length); // 2 + 254
+        Assert.Equal(254, encoded[0]);    // default max
+        Assert.Equal(2, encoded[1]);      // actual
+    }
+
+    [Fact]
+    public void EncodeString_TruncatesLongText()
+    {
+        var longText = new string('A', 30);
+        var encoded = S7Types.EncodeString(longText, 10);
+        Assert.Equal(12, encoded.Length); // 2 + 10
+        Assert.Equal(10, encoded[0]);    // max
+        Assert.Equal(10, encoded[1]);    // actual (truncated)
+    }
+
+    // ==========================================================================
+    // DecodeString edge cases
+    // ==========================================================================
+
+    [Fact]
+    public void DecodeString_SingleByteData_ReturnsEmpty()
+    {
+        var result = S7Types.DecodeString(new byte[] { 20 });
+        Assert.Equal("", result.AsString());
+    }
+
+    [Fact]
+    public void DecodeString_ActualLengthExceedsData_Clamps()
+    {
+        var data = new byte[] { 20, 10, (byte)'A', (byte)'B' }; // claims 10 chars but only 2 available
+        var result = S7Types.DecodeString(data);
+        Assert.Equal("AB", result.AsString());
+    }
+
+    // ==========================================================================
+    // ToPlcDataType - Additional Branches
+    // ==========================================================================
+
+    [Fact]
+    public void ToPlcDataType_Byte_ReturnsUsint() =>
+        Assert.Equal(PlcDataType.Usint, S7Types.ToPlcDataType(S7Address.Parse("DB1.DBB0")));
+
+    [Fact]
+    public void ToPlcDataType_Real_ReturnsReal()
+    {
+        var addr = new S7Address(S7Area.DataBlock, 1, 0, 0, S7TransportSize.Real, 4, false);
+        Assert.Equal(PlcDataType.Real, S7Types.ToPlcDataType(addr));
+    }
+
+    [Fact]
+    public void ToPlcDataType_Timer_ReturnsInt() =>
+        Assert.Equal(PlcDataType.Int, S7Types.ToPlcDataType(S7Address.Parse("T0")));
+
+    [Fact]
+    public void ToPlcDataType_Counter_ReturnsInt() =>
+        Assert.Equal(PlcDataType.Int, S7Types.ToPlcDataType(S7Address.Parse("C0")));
+
+    [Fact]
+    public void ToPlcDataType_Int_ReturnsInt()
+    {
+        var addr = new S7Address(S7Area.DataBlock, 1, 0, 0, S7TransportSize.Int, 2, false);
+        Assert.Equal(PlcDataType.Int, S7Types.ToPlcDataType(addr));
+    }
+
+    [Fact]
+    public void ToPlcDataType_DInt_ReturnsDint()
+    {
+        var addr = new S7Address(S7Area.DataBlock, 1, 0, 0, S7TransportSize.DInt, 4, false);
+        Assert.Equal(PlcDataType.Dint, S7Types.ToPlcDataType(addr));
+    }
+
+    // ==========================================================================
+    // GetTypeName - Additional Branches
+    // ==========================================================================
+
+    [Fact]
+    public void GetTypeName_Int_ReturnsInt()
+    {
+        var addr = new S7Address(S7Area.DataBlock, 1, 0, 0, S7TransportSize.Int, 2, false);
+        Assert.Equal("INT", S7Types.GetTypeName(addr));
+    }
+
+    [Fact]
+    public void GetTypeName_DInt_ReturnsDInt()
+    {
+        var addr = new S7Address(S7Area.DataBlock, 1, 0, 0, S7TransportSize.DInt, 4, false);
+        Assert.Equal("DINT", S7Types.GetTypeName(addr));
+    }
+
+    [Fact]
+    public void GetTypeName_Real_ReturnsReal()
+    {
+        var addr = new S7Address(S7Area.DataBlock, 1, 0, 0, S7TransportSize.Real, 4, false);
+        Assert.Equal("REAL", S7Types.GetTypeName(addr));
+    }
 }

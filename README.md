@@ -23,7 +23,7 @@ A native .NET Core library for reading and writing PLC tags. No C/C++ wrappers, 
 | Allen-Bradley PLC-5 | Supported | PCCC over CIP |
 | Siemens S7-300/400/1200/1500 | Supported | S7comm over ISO-on-TCP |
 | Omron NJ/NX/CJ/CP | Supported | FINS over TCP |
-| Modbus TCP devices | Planned (Phase 4) | Modbus TCP |
+| Modbus TCP devices | Supported | Modbus TCP |
 
 ## Supported Data Types
 
@@ -83,6 +83,15 @@ A native .NET Core library for reading and writing PLC tags. No C/C++ wrappers, 
 | WORD | D0, CIO0, W0, H0, A0 | `short` | 2 |
 | Timer PV | T0 | `short` | 2 |
 | Counter PV | C0 | `short` | 2 |
+
+### Modbus TCP
+
+| Modbus Type | Address | .NET Type | Access |
+|---|---|---|---|
+| Holding Register | HR0, 400001 | `short` | Read/Write |
+| Input Register | IR0, 300001 | `short` | Read-Only |
+| Coil | C0, 1 | `bool` | Read/Write |
+| Discrete Input | DI0, 100001 | `bool` | Read-Only |
 
 ## Quick Start
 
@@ -431,6 +440,40 @@ await omron.WriteAsync("CIO0.00", true);
 var results = await omron.ReadAsync(new[] { "D100", "D101", "W0" });
 ```
 
+### Modbus TCP
+
+```csharp
+using SimplePLCDriverCore.Drivers;
+
+// Connect to a Modbus TCP device (port 502)
+await using var device = PlcDriverFactory.CreateModbus("192.168.1.50");
+await device.ConnectAsync();
+
+// Read holding registers (16-bit, read/write)
+var hr = await device.ReadAsync("HR100");
+short regValue = hr.Value;
+
+// Read coils (1-bit, read/write)
+var coil = await device.ReadAsync("C0");
+bool coilValue = coil.Value;
+
+// Read input registers (16-bit, read-only)
+var ir = await device.ReadAsync("IR0");
+
+// Read discrete inputs (1-bit, read-only)
+var di = await device.ReadAsync("DI0");
+
+// Classic Modbus addressing also supported
+var classic = await device.ReadAsync("400001"); // = HR0
+
+// Write values
+await device.WriteAsync("HR100", (short)42);
+await device.WriteAsync("C0", true);
+
+// Custom port and unit/slave ID
+await using var device2 = PlcDriverFactory.CreateModbus("192.168.1.51", port: 5020, unitId: 2);
+```
+
 ### SLC File-Based Addressing
 
 ```csharp
@@ -465,21 +508,21 @@ var results = await slc.ReadAsync(new[] { "N7:0", "N7:1", "F8:0" });
 ## Architecture
 
 ```
-+------------------+------------------+------------------+------------------+
-|  LogixDriver     |  SlcDriver       |  SiemensDriver   |  OmronDriver     |
-|  (IPlcDriver +   |  (IPlcDriver)    |  (IPlcDriver)    |  (IPlcDriver)    |
-|   ITagBrowser)   |                  |                  |                  |
-+------------------+------------------+------------------+------------------+
-|  CIP + Tags      |  PCCC over CIP   |  S7comm          |  FINS/TCP        |
-|  TagDatabase     |  PcccCommand     |  S7Message       |  FinsMessage     |
-|  MultiService    |  PcccTypes       |  S7Types         |  FinsTypes       |
-+------------------+------------------+------------------+------------------+
-|  EtherNet/IP Encapsulation          |  TPKT + COTP     |  FINS/TCP Frame  |
-|  RegisterSession, SendRRData        |  ISO-on-TCP      |  Node Handshake  |
-+-------------------------------------+------------------+------------------+
-|                    TCP Transport (async)                                   |
-|              System.IO.Pipelines, ArrayPool<byte>                         |
-+---------------------------------------------------------------------------+
++------------------+------------------+------------------+------------------+------------------+
+|  LogixDriver     |  SlcDriver       |  SiemensDriver   |  OmronDriver     |  ModbusDriver    |
+|  (IPlcDriver +   |  (IPlcDriver)    |  (IPlcDriver)    |  (IPlcDriver)    |  (IPlcDriver)    |
+|   ITagBrowser)   |                  |                  |                  |                  |
++------------------+------------------+------------------+------------------+------------------+
+|  CIP + Tags      |  PCCC over CIP   |  S7comm          |  FINS/TCP        |  Modbus TCP      |
+|  TagDatabase     |  PcccCommand     |  S7Message       |  FinsMessage     |  ModbusMessage   |
+|  MultiService    |  PcccTypes       |  S7Types         |  FinsTypes       |  ModbusTypes     |
++------------------+------------------+------------------+------------------+------------------+
+|  EtherNet/IP Encapsulation          |  TPKT + COTP     |  FINS/TCP Frame  |  MBAP Header     |
+|  RegisterSession, SendRRData        |  ISO-on-TCP      |  Node Handshake  |  Port 502        |
++-------------------------------------+------------------+------------------+------------------+
+|                         TCP Transport (async)                                                |
+|                   System.IO.Pipelines, ArrayPool<byte>                                      |
++---------------------------------------------------------------------------------------------+
 ```
 
 ## How Typeless Access Works
@@ -505,7 +548,8 @@ SimplePLCDriverCore/
         Pccc/                      # PCCC protocol (SLC/MicroLogix/PLC-5)
       Protocols/S7/                # S7comm protocol (Siemens)
       Protocols/Fins/              # FINS protocol (Omron)
-      Drivers/                     # High-level drivers (LogixDriver, SlcDriver, SiemensDriver, OmronDriver)
+      Protocols/Modbus/            # Modbus TCP protocol
+      Drivers/                     # High-level drivers (LogixDriver, SlcDriver, SiemensDriver, OmronDriver, ModbusDriver)
       TypeSystem/                  # Tag database, structure decode/encode
     Examples/                      # Usage examples
       BasicReadWrite/              # Logix tag read/write
@@ -515,8 +559,9 @@ SimplePLCDriverCore/
       SlcReadWrite/                # SLC/MicroLogix/PLC-5 read/write
       S7ReadWrite/                 # Siemens S7 read/write
       FinsReadWrite/               # Omron FINS read/write
+      ModbusReadWrite/             # Modbus TCP read/write
   tests/
-    SimplePLCDriverCore.Tests/     # Unit tests (682 tests)
+    SimplePLCDriverCore.Tests/     # Unit tests (795 tests)
 ```
 
 ## Requirements

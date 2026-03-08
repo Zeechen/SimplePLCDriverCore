@@ -26,7 +26,7 @@
 | P1 (Should) | Allen-Bradley PLC-5 | PCCC over CIP | Phase 2 | ✅ Done |
 | P2 (Nice) | Siemens S7-300/400/1200/1500 | S7comm (ISO-on-TCP) | Phase 3 | ✅ Done |
 | P2 (Nice) | Omron NJ/NX/CJ/CP | FINS (TCP/UDP) | Phase 3 | ✅ Done |
-| P3 (Future) | Any Modbus device | Modbus TCP | Phase 4 | Planned |
+| P3 (Future) | Any Modbus device | Modbus TCP | Phase 4 | ✅ Done |
 
 ---
 
@@ -897,15 +897,22 @@ For UDTs:
 
 **Phase 3 totals**: 682 passing tests (203 new tests added)
 
-### Phase 4: Modbus & Polish (Weeks 15-16)
+### Phase 4: Modbus TCP (Weeks 15-16) ✅ Done
 
-- [ ] `ModbusSession` - MBAP framing
-- [ ] `ModbusMessage` - function codes 0x01-0x10
-- [ ] `ModbusDriver` - high-level API
+- [x] `ModbusAddress` - Address parser (HR/IR/C/DI prefix and classic 400001 numeric formats)
+- [x] `ModbusMessage` - MBAP framing + function codes FC01-FC06, FC0F, FC10
+- [x] `ModbusTypes` - Register/coil encode/decode (16-bit, 32-bit, float, multi-value)
+- [x] `ModbusSession` - MBAP framing, stateless TCP session (port 502)
+- [x] `ModbusDriver` - Full IPlcDriver implementation with read-only enforcement
+- [x] `PlcDriverFactory` - CreateModbus/CreateModbusTcp factory methods
+- [x] Unit tests: ModbusAddressTests, ModbusMessageTests, ModbusTypesTests, ModbusDriverTests (113 tests)
+- [x] ModbusReadWrite example application
+- [x] README.md updated with Modbus data types, usage examples, architecture diagram
 - [ ] Performance benchmarking and optimization
-- [ ] Documentation
 - [ ] CI/CD pipeline
 - [ ] NuGet publish
+
+**Phase 4 totals**: 795 passing tests (113 new Modbus tests added)
 
 ---
 

@@ -248,4 +248,152 @@ public class PacketWriterTests
         Assert.Equal(0x05, result[5]);
         Assert.Equal(0x04, result[6]);
     }
+
+    [Fact]
+    public void WriteInt16LE_WritesSignedValue()
+    {
+        using var writer = new PacketWriter();
+        writer.WriteInt16LE(-100);
+        var result = writer.ToArray();
+        Assert.Equal(-100, BitConverter.ToInt16(result, 0));
+    }
+
+    [Fact]
+    public void WriteInt16BE_WritesBigEndian()
+    {
+        using var writer = new PacketWriter();
+        writer.WriteInt16BE(0x0102);
+        var result = writer.ToArray();
+        Assert.Equal(0x01, result[0]);
+        Assert.Equal(0x02, result[1]);
+    }
+
+    [Fact]
+    public void WriteInt32BE_WritesBigEndian()
+    {
+        using var writer = new PacketWriter();
+        writer.WriteInt32BE(0x01020304);
+        var result = writer.ToArray();
+        Assert.Equal(0x01, result[0]);
+        Assert.Equal(0x02, result[1]);
+        Assert.Equal(0x03, result[2]);
+        Assert.Equal(0x04, result[3]);
+    }
+
+    [Fact]
+    public void WriteUInt64BE_WritesBigEndian()
+    {
+        using var writer = new PacketWriter();
+        writer.WriteUInt64BE(0x0102030405060708UL);
+        var result = writer.ToArray();
+        Assert.Equal(0x01, result[0]);
+        Assert.Equal(0x08, result[7]);
+    }
+
+    [Fact]
+    public void WriteInt64LE_WritesSignedValue()
+    {
+        using var writer = new PacketWriter();
+        writer.WriteInt64LE(-42);
+        var result = writer.ToArray();
+        Assert.Equal(-42L, BitConverter.ToInt64(result, 0));
+    }
+
+    [Fact]
+    public void WriteSingleBE_WritesBigEndianFloat()
+    {
+        using var writer = new PacketWriter();
+        writer.WriteSingleBE(3.14f);
+        var result = writer.ToArray();
+        // Read back in BE
+        if (BitConverter.IsLittleEndian) Array.Reverse(result);
+        Assert.Equal(3.14f, BitConverter.ToSingle(result, 0));
+    }
+
+    [Fact]
+    public void WriteDoubleBE_WritesBigEndianDouble()
+    {
+        using var writer = new PacketWriter();
+        writer.WriteDoubleBE(3.14);
+        var result = writer.ToArray();
+        if (BitConverter.IsLittleEndian) Array.Reverse(result);
+        Assert.Equal(3.14, BitConverter.ToDouble(result, 0));
+    }
+
+    [Fact]
+    public void Position_SetterWorks()
+    {
+        using var writer = new PacketWriter();
+        writer.WriteUInt32LE(0);
+        writer.Position = 0;
+        writer.WriteUInt16LE(0x1234);
+        writer.Position = 4; // restore
+        var result = writer.ToArray();
+        Assert.Equal(0x1234, BitConverter.ToUInt16(result, 0));
+    }
+
+    [Fact]
+    public void Position_SetterThrowsOnInvalid()
+    {
+        using var writer = new PacketWriter();
+        Assert.Throws<ArgumentOutOfRangeException>(() => writer.Position = -1);
+    }
+
+    [Fact]
+    public void GetWrittenMemory_ReturnsCorrectData()
+    {
+        using var writer = new PacketWriter();
+        writer.WriteUInt8(0x42);
+        writer.WriteUInt8(0x43);
+        var mem = writer.GetWrittenMemory();
+        Assert.Equal(2, mem.Length);
+        Assert.Equal(0x42, mem.Span[0]);
+    }
+
+    [Fact]
+    public void GetWrittenSpan_ReturnsCorrectData()
+    {
+        using var writer = new PacketWriter();
+        writer.WriteUInt8(0xAB);
+        var span = writer.GetWrittenSpan();
+        Assert.Equal(1, span.Length);
+        Assert.Equal(0xAB, span[0]);
+    }
+
+    [Fact]
+    public void PatchUInt32LE_PatchesAtOffset()
+    {
+        using var writer = new PacketWriter();
+        writer.WriteUInt32LE(0);
+        writer.WriteUInt32LE(0xDEAD);
+        writer.PatchUInt32LE(0, 0x12345678);
+        var result = writer.ToArray();
+        Assert.Equal(0x12345678U, BitConverter.ToUInt32(result, 0));
+    }
+
+    [Fact]
+    public void Dispose_CanBeCalledMultipleTimes()
+    {
+        var writer = new PacketWriter();
+        writer.WriteUInt8(1);
+        writer.Dispose();
+        writer.Dispose(); // should not throw
+    }
+
+    [Fact]
+    public void WriteBigEndian_RoundTrip()
+    {
+        using var writer = new PacketWriter();
+        writer.WriteUInt16BE(0x1234);
+        writer.WriteUInt32BE(0xDEADBEEF);
+        writer.WriteInt16BE(-100);
+        writer.WriteInt32BE(-42);
+
+        var data = writer.ToArray();
+        var reader = new PacketReader(data);
+        Assert.Equal((ushort)0x1234, reader.ReadUInt16BE());
+        Assert.Equal(0xDEADBEEFU, reader.ReadUInt32BE());
+        Assert.Equal((short)-100, reader.ReadInt16BE());
+        Assert.Equal(-42, reader.ReadInt32BE());
+    }
 }

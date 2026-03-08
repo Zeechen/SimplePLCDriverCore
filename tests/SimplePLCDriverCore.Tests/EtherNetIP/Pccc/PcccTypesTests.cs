@@ -451,4 +451,227 @@ public class PcccTypesTests
         var value = PcccTypes.DecodeValue(ReadOnlySpan<byte>.Empty, addr);
         Assert.True(value.IsNull);
     }
+
+    // ==========================================================================
+    // GetStatusMessage - All Branches
+    // ==========================================================================
+
+    [Theory]
+    [InlineData(0x20, "Host")]
+    [InlineData(0x30, "Remote")]
+    [InlineData(0x40, "Hardware")]
+    [InlineData(0x60, "protection")]
+    [InlineData(0x70, "parameter")]
+    [InlineData(0x80, "Address")]
+    [InlineData(0x90, "conversion")]
+    [InlineData(0xA0, "Unknown")]
+    public void GetStatusMessage_AllBranches(byte status, string expectedContains)
+    {
+        var message = PcccTypes.GetStatusMessage(status);
+        Assert.Contains(expectedContains, message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    // ==========================================================================
+    // ToPlcDataType - Additional Branches
+    // ==========================================================================
+
+    [Fact]
+    public void ToPlcDataType_Output() => Assert.Equal(PlcDataType.Int, PcccTypes.ToPlcDataType(PcccFileType.Output));
+
+    [Fact]
+    public void ToPlcDataType_Input() => Assert.Equal(PlcDataType.Int, PcccTypes.ToPlcDataType(PcccFileType.Input));
+
+    [Fact]
+    public void ToPlcDataType_Status() => Assert.Equal(PlcDataType.Int, PcccTypes.ToPlcDataType(PcccFileType.Status));
+
+    [Fact]
+    public void ToPlcDataType_Ascii() => Assert.Equal(PlcDataType.Int, PcccTypes.ToPlcDataType(PcccFileType.Ascii));
+
+    [Fact]
+    public void ToPlcDataType_Control() => Assert.Equal(PlcDataType.Structure, PcccTypes.ToPlcDataType(PcccFileType.Control));
+
+    // ==========================================================================
+    // GetTypeName - Additional Branches
+    // ==========================================================================
+
+    [Fact]
+    public void GetTypeName_Output() => Assert.Equal("OUTPUT", PcccTypes.GetTypeName(PcccFileType.Output));
+
+    [Fact]
+    public void GetTypeName_Input() => Assert.Equal("INPUT", PcccTypes.GetTypeName(PcccFileType.Input));
+
+    [Fact]
+    public void GetTypeName_Status() => Assert.Equal("STATUS", PcccTypes.GetTypeName(PcccFileType.Status));
+
+    [Fact]
+    public void GetTypeName_Ascii() => Assert.Equal("ASCII", PcccTypes.GetTypeName(PcccFileType.Ascii));
+
+    // ==========================================================================
+    // GetElementSize - Additional Branches
+    // ==========================================================================
+
+    [Fact]
+    public void GetElementSize_OutputAlt() => Assert.Equal(2, PcccTypes.GetElementSize(PcccFileType.OutputAlt));
+
+    [Fact]
+    public void GetElementSize_InputAlt() => Assert.Equal(2, PcccTypes.GetElementSize(PcccFileType.InputAlt));
+
+    // ==========================================================================
+    // DecodeValue - Additional Branches
+    // ==========================================================================
+
+    [Fact]
+    public void DecodeValue_Output_AsInt()
+    {
+        var data = new byte[2];
+        BinaryPrimitives.WriteInt16LittleEndian(data, 123);
+        var addr = new PcccAddress("O", 0, 0, -1, -1, PcccFileType.Output);
+        var value = PcccTypes.DecodeValue(data, addr);
+        Assert.Equal(123, value.AsInt32());
+    }
+
+    [Fact]
+    public void DecodeValue_Input_AsInt()
+    {
+        var data = new byte[2];
+        BinaryPrimitives.WriteInt16LittleEndian(data, 456);
+        var addr = new PcccAddress("I", 1, 0, -1, -1, PcccFileType.Input);
+        var value = PcccTypes.DecodeValue(data, addr);
+        Assert.Equal(456, value.AsInt32());
+    }
+
+    [Fact]
+    public void DecodeValue_Status_AsInt()
+    {
+        var data = new byte[2];
+        BinaryPrimitives.WriteInt16LittleEndian(data, 789);
+        var addr = new PcccAddress("S", 2, 0, -1, -1, PcccFileType.Status);
+        var value = PcccTypes.DecodeValue(data, addr);
+        Assert.Equal(789, value.AsInt32());
+    }
+
+    [Fact]
+    public void DecodeValue_Ascii_AsInt()
+    {
+        var data = new byte[2];
+        BinaryPrimitives.WriteInt16LittleEndian(data, 0x4142); // "AB"
+        var addr = new PcccAddress("A", 9, 0, -1, -1, PcccFileType.Ascii);
+        var value = PcccTypes.DecodeValue(data, addr);
+        Assert.Equal(0x4142, value.AsInt32());
+    }
+
+    [Fact]
+    public void DecodeValue_BitFile_NobitAddress_AsInt()
+    {
+        var data = new byte[2];
+        BinaryPrimitives.WriteInt16LittleEndian(data, unchecked((short)0xFFFF));
+        var addr = new PcccAddress("B", 3, 0, -1, -1, PcccFileType.Bit);
+        var value = PcccTypes.DecodeValue(data, addr);
+        Assert.Equal(-1, value.AsInt32()); // 0xFFFF as signed INT16
+    }
+
+    [Fact]
+    public void DecodeValue_SubElement_TooShortData_ReturnsNull()
+    {
+        var data = new byte[1]; // need 2 for sub-element
+        var addr = new PcccAddress("T", 4, 0, 2, -1, PcccFileType.Timer);
+        var value = PcccTypes.DecodeValue(data, addr);
+        Assert.True(value.IsNull);
+    }
+
+    [Fact]
+    public void DecodeValue_BitAddress_TooShortData_ReturnsNull()
+    {
+        var data = new byte[1]; // need 2 for bit address
+        var addr = new PcccAddress("B", 3, 0, -1, 5, PcccFileType.Bit);
+        var value = PcccTypes.DecodeValue(data, addr);
+        Assert.True(value.IsNull);
+    }
+
+    [Fact]
+    public void DecodeValue_UnknownType_ReturnsRawData()
+    {
+        var data = new byte[] { 0x01, 0x02, 0x03 };
+        var addr = new PcccAddress("O", 0, 0, -1, -1, PcccFileType.OutputAlt);
+        var value = PcccTypes.DecodeValue(data, addr);
+        // OutputAlt falls through to default case in switch
+        // Since OutputAlt is not in the explicit match arms (Output is but OutputAlt is separate)
+        // So OutputAlt goes to default branch => Unknown data type
+        Assert.Equal(PlcDataType.Unknown, value.DataType);
+    }
+
+    // ==========================================================================
+    // EncodeValue - Additional Branches
+    // ==========================================================================
+
+    [Fact]
+    public void EncodeValue_Output()
+    {
+        var addr = new PcccAddress("O", 0, 0, -1, -1, PcccFileType.Output);
+        var encoded = PcccTypes.EncodeValue((short)100, addr);
+        Assert.Equal(2, encoded.Length);
+        Assert.Equal(100, BinaryPrimitives.ReadInt16LittleEndian(encoded));
+    }
+
+    [Fact]
+    public void EncodeValue_Input()
+    {
+        var addr = new PcccAddress("I", 1, 0, -1, -1, PcccFileType.Input);
+        var encoded = PcccTypes.EncodeValue((short)200, addr);
+        Assert.Equal(2, encoded.Length);
+    }
+
+    [Fact]
+    public void EncodeValue_Status()
+    {
+        var addr = new PcccAddress("S", 2, 0, -1, -1, PcccFileType.Status);
+        var encoded = PcccTypes.EncodeValue((short)300, addr);
+        Assert.Equal(2, encoded.Length);
+    }
+
+    [Fact]
+    public void EncodeValue_Ascii()
+    {
+        var addr = new PcccAddress("A", 9, 0, -1, -1, PcccFileType.Ascii);
+        var encoded = PcccTypes.EncodeValue((short)0x4142, addr);
+        Assert.Equal(2, encoded.Length);
+    }
+
+    [Fact]
+    public void EncodeValue_BitFile_NoBitAccess()
+    {
+        // Bit file without bit address (not IsBitAddress), encodes as INT16
+        var addr = new PcccAddress("B", 3, 0, -1, -1, PcccFileType.Bit);
+        var encoded = PcccTypes.EncodeValue((short)0x00FF, addr);
+        Assert.Equal(2, encoded.Length);
+        Assert.Equal(0x00FF, BinaryPrimitives.ReadInt16LittleEndian(encoded));
+    }
+
+    [Fact]
+    public void EncodeValue_BitFalse()
+    {
+        var addr = PcccAddress.Parse("B3:0/5");
+        var encoded = PcccTypes.EncodeValue(false, addr);
+        Assert.Equal(2, encoded.Length);
+        Assert.Equal(0, BinaryPrimitives.ReadUInt16LittleEndian(encoded));
+    }
+
+    [Fact]
+    public void EncodeValue_String_FromNonStringObject()
+    {
+        var addr = PcccAddress.Parse("ST9:0");
+        var encoded = PcccTypes.EncodeValue(12345, addr);
+        Assert.Equal(84, encoded.Length);
+        // Should call value.ToString() => "12345"
+        Assert.Equal(5, BinaryPrimitives.ReadInt16LittleEndian(encoded));
+    }
+
+    [Fact]
+    public void EncodeValue_SubElement_Encodes_AsInt16()
+    {
+        var addr = PcccAddress.Parse("C5:0.PRE");
+        var encoded = PcccTypes.EncodeValue((short)500, addr);
+        Assert.Equal(2, encoded.Length);
+        Assert.Equal(500, BinaryPrimitives.ReadInt16LittleEndian(encoded));
+    }
 }

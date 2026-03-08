@@ -135,4 +135,31 @@ public static class PlcDriverFactory
     {
         return new OmronDriver(host, options);
     }
+
+    // --- Modbus TCP ---
+
+    /// <summary>
+    /// Create a driver for any Modbus TCP device.
+    /// Uses Modbus TCP (port 502) with HR/IR/C/DI addressing.
+    /// </summary>
+    /// <param name="host">Device IP address or hostname.</param>
+    /// <param name="port">Modbus TCP port. Default 502.</param>
+    /// <param name="unitId">Modbus unit/slave ID. Default 1.</param>
+    /// <param name="options">Optional connection options.</param>
+    public static ModbusDriver CreateModbus(
+        string host, int port = 502, byte unitId = 1, ConnectionOptions? options = null)
+    {
+        return new ModbusDriver(host, port, unitId, options);
+    }
+
+    /// <summary>
+    /// Create a driver for a Modbus TCP device with default settings (port 502, unit ID 1).
+    /// </summary>
+    /// <param name="host">Device IP address or hostname.</param>
+    /// <param name="options">Optional connection options.</param>
+    public static ModbusDriver CreateModbusTcp(
+        string host, ConnectionOptions? options = null)
+    {
+        return new ModbusDriver(host, options: options);
+    }
 }

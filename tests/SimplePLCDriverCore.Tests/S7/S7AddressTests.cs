@@ -307,4 +307,108 @@ public class S7AddressTests
         Assert.True(S7Address.TryParse("DB1.DBW0", out var addr));
         Assert.Equal(S7Area.DataBlock, addr.Area);
     }
+
+    // ==========================================================================
+    // Additional ToString Coverage
+    // ==========================================================================
+
+    [Fact]
+    public void ToString_DbByte() =>
+        Assert.Equal("DB1.DBB0", S7Address.Parse("DB1.DBB0").ToString());
+
+    [Fact]
+    public void ToString_DbString()
+    {
+        var str = S7Address.Parse("DB1.DBS10.20").ToString();
+        Assert.Contains("DB1", str);
+    }
+
+    [Fact]
+    public void ToString_InputBit() =>
+        Assert.Equal("I0.0", S7Address.Parse("I0.0").ToString());
+
+    [Fact]
+    public void ToString_OutputWord() =>
+        Assert.Equal("Q4.0", S7Address.Parse("Q4.0").ToString());
+
+    [Fact]
+    public void ToString_MerkerByte() =>
+        Assert.Equal("MB10", S7Address.Parse("MB10").ToString());
+
+    // ==========================================================================
+    // Additional Direct Area Parsing
+    // ==========================================================================
+
+    [Fact]
+    public void Parse_OutputByte()
+    {
+        var addr = S7Address.Parse("QB0");
+        Assert.Equal(S7Area.ProcessOutput, addr.Area);
+        Assert.Equal(S7TransportSize.Byte, addr.TransportSize);
+    }
+
+    [Fact]
+    public void Parse_OutputDWord()
+    {
+        var addr = S7Address.Parse("QD0");
+        Assert.Equal(S7Area.ProcessOutput, addr.Area);
+        Assert.Equal(S7TransportSize.DWord, addr.TransportSize);
+    }
+
+    [Fact]
+    public void Parse_EuropeanInputWord()
+    {
+        var addr = S7Address.Parse("EW0");
+        Assert.Equal(S7Area.ProcessInput, addr.Area);
+        Assert.Equal(S7TransportSize.Word, addr.TransportSize);
+    }
+
+    [Fact]
+    public void Parse_EuropeanInputDWord()
+    {
+        var addr = S7Address.Parse("ED0");
+        Assert.Equal(S7Area.ProcessInput, addr.Area);
+        Assert.Equal(S7TransportSize.DWord, addr.TransportSize);
+    }
+
+    [Fact]
+    public void Parse_EuropeanOutputByte()
+    {
+        var addr = S7Address.Parse("AB0");
+        Assert.Equal(S7Area.ProcessOutput, addr.Area);
+        Assert.Equal(S7TransportSize.Byte, addr.TransportSize);
+    }
+
+    [Fact]
+    public void Parse_EuropeanOutputDWord()
+    {
+        var addr = S7Address.Parse("AD0");
+        Assert.Equal(S7Area.ProcessOutput, addr.Area);
+        Assert.Equal(S7TransportSize.DWord, addr.TransportSize);
+    }
+
+    [Fact]
+    public void Parse_MerkerBit_HighBit()
+    {
+        var addr = S7Address.Parse("M100.7");
+        Assert.Equal(S7Area.Merker, addr.Area);
+        Assert.Equal(100, addr.ByteOffset);
+        Assert.Equal(7, addr.BitNumber);
+    }
+
+    [Fact]
+    public void Parse_HighTimerNumber()
+    {
+        var addr = S7Address.Parse("T255");
+        Assert.Equal(S7Area.Timer, addr.Area);
+        Assert.Equal(255, addr.ByteOffset);
+    }
+
+    [Fact]
+    public void Parse_HighCounterNumber()
+    {
+        var addr = S7Address.Parse("C255");
+        Assert.Equal(S7Area.Counter, addr.Area);
+        Assert.Equal(255, addr.ByteOffset);
+    }
 }

@@ -267,25 +267,33 @@ public class S7MessageTests
         Assert.Equal(string.Empty, resp.GetErrorMessage());
     }
 
-    [Fact]
-    public void S7Response_GetErrorMessage_Error_HasDescription()
+    [Theory]
+    [InlineData(0x00, "No error")]
+    [InlineData(0x81, "Application relationship error")]
+    [InlineData(0x82, "Object definition error")]
+    [InlineData(0x83, "No resources available")]
+    [InlineData(0x84, "Service processing error")]
+    [InlineData(0x85, "Supply error")]
+    [InlineData(0x87, "Access error")]
+    [InlineData(0xFF, "Unknown")]
+    public void S7Response_GetErrorMessage_AllErrorClasses(byte errorClass, string expectedSubstring)
     {
-        var resp = new S7Response(false, 0x85, 0x01, [], []);
-        var msg = resp.GetErrorMessage();
-        Assert.Contains("0x85", msg);
+        var resp = new S7Response(false, errorClass, 0x01, [], []);
+        Assert.Contains(expectedSubstring, resp.GetErrorMessage());
     }
 
-    [Fact]
-    public void S7Response_GetItemErrorMessage_Success()
+    [Theory]
+    [InlineData(0xFF, "Success")]
+    [InlineData(0x01, "Hardware error")]
+    [InlineData(0x03, "Object access not allowed")]
+    [InlineData(0x05, "Invalid address")]
+    [InlineData(0x06, "Data type not supported")]
+    [InlineData(0x07, "Data type inconsistent")]
+    [InlineData(0x0A, "Object does not exist")]
+    [InlineData(0xFE, "Unknown error")]
+    public void S7Response_GetItemErrorMessage_AllCodes(byte returnCode, string expectedSubstring)
     {
-        Assert.Equal("Success", S7Response.GetItemErrorMessage(0xFF));
-    }
-
-    [Fact]
-    public void S7Response_GetItemErrorMessage_InvalidAddress()
-    {
-        Assert.Contains("address", S7Response.GetItemErrorMessage(0x05),
-            StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(expectedSubstring, S7Response.GetItemErrorMessage(returnCode));
     }
 
     // ==========================================================================

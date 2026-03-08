@@ -189,4 +189,121 @@ public class PacketReaderTests
         reader.Position = 2;
         Assert.Equal(0x03, reader.ReadUInt8());
     }
+
+    [Fact]
+    public void ReadInt16BE_ReadsBigEndian()
+    {
+        var reader = new PacketReader(new byte[] { 0xFF, 0xFF });
+        Assert.Equal((short)-1, reader.ReadInt16BE());
+    }
+
+    [Fact]
+    public void ReadInt32BE_ReadsBigEndian()
+    {
+        var reader = new PacketReader(new byte[] { 0x00, 0x00, 0x00, 0x2A });
+        Assert.Equal(42, reader.ReadInt32BE());
+    }
+
+    [Fact]
+    public void ReadUInt64BE_ReadsBigEndian()
+    {
+        var reader = new PacketReader(new byte[] { 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08 });
+        Assert.Equal(0x0102030405060708UL, reader.ReadUInt64BE());
+    }
+
+    [Fact]
+    public void ReadDoubleBE_ReadsDouble()
+    {
+        var bytes = BitConverter.GetBytes(3.14);
+        if (BitConverter.IsLittleEndian) Array.Reverse(bytes);
+        var reader = new PacketReader(bytes);
+        Assert.Equal(3.14, reader.ReadDoubleBE(), 10);
+    }
+
+    [Fact]
+    public void ReadInt16LE_ReadsSignedLittleEndian()
+    {
+        var bytes = BitConverter.GetBytes((short)-100);
+        var reader = new PacketReader(bytes);
+        Assert.Equal((short)-100, reader.ReadInt16LE());
+    }
+
+    [Fact]
+    public void ReadInt64LE_ReadsCorrectly()
+    {
+        var bytes = BitConverter.GetBytes((long)-42);
+        var reader = new PacketReader(bytes);
+        Assert.Equal((long)-42, reader.ReadInt64LE());
+    }
+
+    [Fact]
+    public void ReadBytes_ReadsSpan()
+    {
+        var reader = new PacketReader(new byte[] { 0x01, 0x02, 0x03, 0x04 });
+        var span = reader.ReadBytes(2);
+        Assert.Equal(2, span.Length);
+        Assert.Equal(0x01, span[0]);
+        Assert.Equal(0x02, span[1]);
+        Assert.Equal(2, reader.Position);
+    }
+
+    [Fact]
+    public void PeekUInt32LE_DoesNotAdvancePosition()
+    {
+        var reader = new PacketReader(new byte[] { 0x04, 0x03, 0x02, 0x01 });
+        Assert.Equal(0x01020304U, reader.PeekUInt32LE());
+        Assert.Equal(0, reader.Position);
+    }
+
+    [Fact]
+    public void ReadUInt8At_ReadsAtOffset()
+    {
+        var reader = new PacketReader(new byte[] { 0xAA, 0xBB, 0xCC });
+        Assert.Equal(0xBB, reader.ReadUInt8At(1));
+        Assert.Equal(0, reader.Position);
+    }
+
+    [Fact]
+    public void ReadUInt32LEAt_ReadsAtOffset()
+    {
+        var reader = new PacketReader(new byte[] { 0xFF, 0xFF, 0x04, 0x03, 0x02, 0x01 });
+        Assert.Equal(0x01020304U, reader.ReadUInt32LEAt(2));
+        Assert.Equal(0, reader.Position);
+    }
+
+    [Fact]
+    public void Length_ReturnsBufferLength()
+    {
+        var reader = new PacketReader(new byte[] { 0x01, 0x02, 0x03 });
+        Assert.Equal(3, reader.Length);
+    }
+
+    [Fact]
+    public void RemainingSpan_ReturnsCorrectSlice()
+    {
+        var reader = new PacketReader(new byte[] { 0x01, 0x02, 0x03, 0x04 });
+        reader.Skip(2);
+        var remaining = reader.RemainingSpan;
+        Assert.Equal(2, remaining.Length);
+        Assert.Equal(0x03, remaining[0]);
+    }
+
+    [Fact]
+    public void Slice_ReturnsCorrectSlice()
+    {
+        var reader = new PacketReader(new byte[] { 0x01, 0x02, 0x03, 0x04 });
+        reader.Skip(1);
+        var slice = reader.Slice(2);
+        Assert.Equal(2, slice.Length);
+        Assert.Equal(0x02, slice[0]);
+        Assert.Equal(0x03, slice[1]);
+    }
+
+    [Fact]
+    public void Constructor_FromReadOnlyMemory()
+    {
+        ReadOnlyMemory<byte> mem = new byte[] { 0x42 };
+        var reader = new PacketReader(mem);
+        Assert.Equal(0x42, reader.ReadUInt8());
+    }
 }

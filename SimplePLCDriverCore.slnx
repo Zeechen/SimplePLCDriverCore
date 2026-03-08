@@ -13,5 +13,6 @@
     <Project Path="src/Examples/SlcReadWrite/SlcReadWrite.csproj" />
     <Project Path="src/Examples/S7ReadWrite/S7ReadWrite.csproj" />
     <Project Path="src/Examples/FinsReadWrite/FinsReadWrite.csproj" />
+    <Project Path="src/Examples/ModbusReadWrite/ModbusReadWrite.csproj" />
   </Folder>
 </Solution>

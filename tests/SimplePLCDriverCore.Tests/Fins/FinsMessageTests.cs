@@ -233,6 +233,53 @@ public class FinsMessageTests
         Assert.Contains("Read not possible", resp.GetErrorMessage());
     }
 
+    [Theory]
+    [InlineData(0x00, 0x01, "FINS warning")]
+    [InlineData(0x02, 0x01, "Destination node error")]
+    [InlineData(0x03, 0x01, "Controller error")]
+    [InlineData(0x04, 0x01, "Service unsupported")]
+    [InlineData(0x05, 0x01, "Routing error")]
+    [InlineData(0x10, 0x01, "Command format error")]
+    [InlineData(0x11, 0x01, "Parameter error")]
+    [InlineData(0x21, 0x01, "Write not possible")]
+    [InlineData(0x22, 0x01, "Not executable")]
+    [InlineData(0x23, 0x01, "No unit")]
+    [InlineData(0x25, 0x01, "File/memory error")]
+    [InlineData(0xFF, 0x01, "FINS error")]
+    public void FinsResponse_GetErrorMessage_AllCodes(byte mainCode, byte subCode, string expectedSubstring)
+    {
+        var resp = new FinsResponse(false, mainCode, subCode, ReadOnlyMemory<byte>.Empty);
+        Assert.Contains(expectedSubstring, resp.GetErrorMessage());
+    }
+
+    [Fact]
+    public void ParseResponse_InvalidCommand_Throws()
+    {
+        using var writer = new PacketWriter(64);
+        writer.WriteBytes(FinsMessage.FinsMagic);
+        writer.WriteUInt32BE(20);
+        writer.WriteUInt32BE(0x99999999); // invalid command
+        writer.WriteUInt32BE(0); // no error
+        writer.WriteBytes(new byte[12]);
+
+        Assert.Throws<InvalidOperationException>(
+            () => FinsMessage.ParseResponse(writer.ToArray()));
+    }
+
+    [Fact]
+    public void ParseResponse_ShortFinsData_Throws()
+    {
+        using var writer = new PacketWriter(64);
+        writer.WriteBytes(FinsMessage.FinsMagic);
+        writer.WriteUInt32BE(10); // very small payload
+        writer.WriteUInt32BE(FinsMessage.TcpCommandSendFrame);
+        writer.WriteUInt32BE(0);
+        writer.WriteBytes(new byte[2]); // too short for FINS header
+
+        Assert.Throws<InvalidOperationException>(
+            () => FinsMessage.ParseResponse(writer.ToArray()));
+    }
+
     // ==========================================================================
     // Helpers
     // ==========================================================================

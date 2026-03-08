@@ -251,6 +251,229 @@ public class UdtJsonEncoderTests
             encoder.Encode("{}", 0x0100, new byte[4])); // 4 != 8
     }
 
+    // ==========================================================================
+    // All Atomic Types Encoding
+    // ==========================================================================
+
+    private static TagDatabase CreateAllTypesDb()
+    {
+        var db = new TagDatabase();
+        db.AddUdtDefinition(new UdtDefinition
+        {
+            Name = "AllTypes",
+            ByteSize = 40,
+            TemplateInstanceId = 0x0700,
+            Members =
+            [
+                new UdtMember { Name = "BoolVal", DataType = PlcDataType.Bool, TypeName = "BOOL", Offset = 0, Size = 1 },
+                new UdtMember { Name = "SintVal", DataType = PlcDataType.Sint, TypeName = "SINT", Offset = 1, Size = 1 },
+                new UdtMember { Name = "IntVal", DataType = PlcDataType.Int, TypeName = "INT", Offset = 2, Size = 2 },
+                new UdtMember { Name = "DintVal", DataType = PlcDataType.Dint, TypeName = "DINT", Offset = 4, Size = 4 },
+                new UdtMember { Name = "LintVal", DataType = PlcDataType.Lint, TypeName = "LINT", Offset = 8, Size = 8 },
+                new UdtMember { Name = "UsintVal", DataType = PlcDataType.Usint, TypeName = "USINT", Offset = 16, Size = 1 },
+                new UdtMember { Name = "UintVal", DataType = PlcDataType.Uint, TypeName = "UINT", Offset = 18, Size = 2 },
+                new UdtMember { Name = "UdintVal", DataType = PlcDataType.Udint, TypeName = "UDINT", Offset = 20, Size = 4 },
+                new UdtMember { Name = "UlintVal", DataType = PlcDataType.Ulint, TypeName = "ULINT", Offset = 24, Size = 8 },
+                new UdtMember { Name = "RealVal", DataType = PlcDataType.Real, TypeName = "REAL", Offset = 32, Size = 4 },
+                new UdtMember { Name = "LrealVal", DataType = PlcDataType.Lreal, TypeName = "LREAL", Offset = 36, Size = 8 },
+            ],
+        });
+        return db;
+    }
+
+    [Fact]
+    public void Encode_AllAtomicTypes()
+    {
+        // Use a DB large enough: 44 bytes
+        var db = new TagDatabase();
+        db.AddUdtDefinition(new UdtDefinition
+        {
+            Name = "AllTypes",
+            ByteSize = 44,
+            TemplateInstanceId = 0x0700,
+            Members =
+            [
+                new UdtMember { Name = "BoolVal", DataType = PlcDataType.Bool, TypeName = "BOOL", Offset = 0, Size = 1 },
+                new UdtMember { Name = "SintVal", DataType = PlcDataType.Sint, TypeName = "SINT", Offset = 1, Size = 1 },
+                new UdtMember { Name = "IntVal", DataType = PlcDataType.Int, TypeName = "INT", Offset = 2, Size = 2 },
+                new UdtMember { Name = "DintVal", DataType = PlcDataType.Dint, TypeName = "DINT", Offset = 4, Size = 4 },
+                new UdtMember { Name = "LintVal", DataType = PlcDataType.Lint, TypeName = "LINT", Offset = 8, Size = 8 },
+                new UdtMember { Name = "UsintVal", DataType = PlcDataType.Usint, TypeName = "USINT", Offset = 16, Size = 1 },
+                new UdtMember { Name = "UintVal", DataType = PlcDataType.Uint, TypeName = "UINT", Offset = 18, Size = 2 },
+                new UdtMember { Name = "UdintVal", DataType = PlcDataType.Udint, TypeName = "UDINT", Offset = 20, Size = 4 },
+                new UdtMember { Name = "UlintVal", DataType = PlcDataType.Ulint, TypeName = "ULINT", Offset = 24, Size = 8 },
+                new UdtMember { Name = "RealVal", DataType = PlcDataType.Real, TypeName = "REAL", Offset = 32, Size = 4 },
+                new UdtMember { Name = "LrealVal", DataType = PlcDataType.Lreal, TypeName = "LREAL", Offset = 36, Size = 8 },
+            ],
+        });
+        var encoder = new UdtJsonEncoder(db);
+        var json = """
+        {
+            "BoolVal": true,
+            "SintVal": -5,
+            "IntVal": 1000,
+            "DintVal": 100000,
+            "LintVal": 9999999999,
+            "UsintVal": 250,
+            "UintVal": 60000,
+            "UdintVal": 4000000000,
+            "UlintVal": 18000000000000000000,
+            "RealVal": 2.5,
+            "LrealVal": 3.14159
+        }
+        """;
+        var encoded = encoder.Encode(json, 0x0700);
+
+        Assert.Equal(44, encoded.Length);
+        Assert.Equal(1, encoded[0]);  // BoolVal = true
+        Assert.Equal(unchecked((byte)-5), encoded[1]); // SintVal
+        Assert.Equal((short)1000, BinaryPrimitives.ReadInt16LittleEndian(encoded.AsSpan(2)));
+        Assert.Equal(100000, BinaryPrimitives.ReadInt32LittleEndian(encoded.AsSpan(4)));
+        Assert.Equal(9999999999L, BinaryPrimitives.ReadInt64LittleEndian(encoded.AsSpan(8)));
+        Assert.Equal(250, encoded[16]); // UsintVal
+        Assert.Equal((ushort)60000, BinaryPrimitives.ReadUInt16LittleEndian(encoded.AsSpan(18)));
+        Assert.Equal(4000000000u, BinaryPrimitives.ReadUInt32LittleEndian(encoded.AsSpan(20)));
+        Assert.Equal(18000000000000000000UL, BinaryPrimitives.ReadUInt64LittleEndian(encoded.AsSpan(24)));
+        Assert.Equal(2.5f, BinaryPrimitives.ReadSingleLittleEndian(encoded.AsSpan(32)));
+        Assert.Equal(3.14159, BinaryPrimitives.ReadDoubleLittleEndian(encoded.AsSpan(36)), 5);
+    }
+
+    [Fact]
+    public void Encode_BoolAsFalse()
+    {
+        var db = new TagDatabase();
+        db.AddUdtDefinition(new UdtDefinition
+        {
+            Name = "BoolOnly",
+            ByteSize = 1,
+            TemplateInstanceId = 0x0900,
+            Members =
+            [
+                new UdtMember { Name = "Flag", DataType = PlcDataType.Bool, TypeName = "BOOL", Offset = 0, Size = 1 },
+            ],
+        });
+        var encoder = new UdtJsonEncoder(db);
+        var encoded = encoder.Encode("""{"Flag": false}""", 0x0900);
+        Assert.Equal(0, encoded[0]);
+    }
+
+    [Fact]
+    public void Encode_BoolBitMember_1ByteTarget()
+    {
+        // A BOOL bit member where the target span is < 4 bytes (1-byte path)
+        var db = new TagDatabase();
+        db.AddUdtDefinition(new UdtDefinition
+        {
+            Name = "SmallBool",
+            ByteSize = 1,
+            TemplateInstanceId = 0x0A00,
+            Members =
+            [
+                new UdtMember { Name = "Bit0", DataType = PlcDataType.Bool, TypeName = "BOOL", Offset = 0, Size = 1, BitOffset = 0 },
+                new UdtMember { Name = "Bit1", DataType = PlcDataType.Bool, TypeName = "BOOL", Offset = 0, Size = 1, BitOffset = 1 },
+            ],
+        });
+        var encoder = new UdtJsonEncoder(db);
+        var encoded = encoder.Encode("""{"Bit0": true, "Bit1": false}""", 0x0A00);
+        Assert.Equal(1, encoded.Length);
+        Assert.True((encoded[0] & 1) != 0);
+        Assert.False((encoded[0] & 2) != 0);
+    }
+
+    [Fact]
+    public void Encode_BoolBitMember_NumberValue()
+    {
+        var db = CreateBoolUdtDb();
+        var encoder = new UdtJsonEncoder(db);
+        // Use number values instead of true/false for bool bit members
+        var encoded = encoder.Encode("""{"Flag0": 1, "Flag1": 0, "Flag7": 1}""", 0x0200);
+        var word = BinaryPrimitives.ReadUInt32LittleEndian(encoded);
+        Assert.True((word & 1) != 0);
+        Assert.False((word & 2) != 0);
+        Assert.True((word & 128) != 0);
+    }
+
+    [Fact]
+    public void Encode_StringMember()
+    {
+        var db = new TagDatabase();
+        db.AddUdtDefinition(new UdtDefinition
+        {
+            Name = "STRING",
+            ByteSize = 88,
+            TemplateInstanceId = 0x0CE8,
+            Members =
+            [
+                new UdtMember { Name = "LEN", DataType = PlcDataType.Dint, TypeName = "DINT", Offset = 0, Size = 4 },
+                new UdtMember { Name = "DATA", DataType = PlcDataType.Sint, TypeName = "SINT", Offset = 4, Size = 1, Dimensions = [82] },
+            ],
+        });
+        db.AddUdtDefinition(new UdtDefinition
+        {
+            Name = "WithString",
+            ByteSize = 92,
+            TemplateInstanceId = 0x0B00,
+            Members =
+            [
+                new UdtMember { Name = "Code", DataType = PlcDataType.Dint, TypeName = "DINT", Offset = 0, Size = 4 },
+                new UdtMember
+                {
+                    Name = "Label", DataType = PlcDataType.Structure, TypeName = "STRING",
+                    Offset = 4, Size = 88, IsStructure = true, TemplateInstanceId = 0x0CE8
+                },
+            ],
+        });
+        var encoder = new UdtJsonEncoder(db);
+        var encoded = encoder.Encode("""{"Code": 7, "Label": "Test"}""", 0x0B00);
+        Assert.Equal(92, encoded.Length);
+        Assert.Equal(7, BinaryPrimitives.ReadInt32LittleEndian(encoded));
+        Assert.Equal(4, BinaryPrimitives.ReadInt32LittleEndian(encoded.AsSpan(4))); // LEN=4
+        Assert.Equal((byte)'T', encoded[8]);
+    }
+
+    [Fact]
+    public void Encode_NestedStructure_NoTemplateId_Ignored()
+    {
+        var db = new TagDatabase();
+        db.AddUdtDefinition(new UdtDefinition
+        {
+            Name = "TestUDT",
+            ByteSize = 8,
+            TemplateInstanceId = 0x0C00,
+            Members =
+            [
+                new UdtMember { Name = "Nested", DataType = PlcDataType.Structure, TypeName = "Unknown", Offset = 0, Size = 4, IsStructure = true, TemplateInstanceId = 0 },
+                new UdtMember { Name = "Val", DataType = PlcDataType.Dint, TypeName = "DINT", Offset = 4, Size = 4 },
+            ],
+        });
+        var encoder = new UdtJsonEncoder(db);
+        // Nested with templateId=0 should be skipped
+        var encoded = encoder.Encode("""{"Nested": {"x": 1}, "Val": 42}""", 0x0C00);
+        Assert.Equal(42, BinaryPrimitives.ReadInt32LittleEndian(encoded.AsSpan(4)));
+    }
+
+    [Fact]
+    public void Encode_StructureArrayMember_NonArray_Ignored()
+    {
+        var db = CreateStructArrayUdtDb();
+        var encoder = new UdtJsonEncoder(db);
+        // Pass non-array for structure array member - should be ignored
+        var encoded = encoder.Encode("""{"Items": "not an array"}""", 0x0600);
+        Assert.Equal(12, encoded.Length);
+        // All zeros since non-array is ignored
+        Assert.Equal(0, BinaryPrimitives.ReadInt32LittleEndian(encoded));
+    }
+
+    [Fact]
+    public void Encode_ArrayMember_NonArray_Ignored()
+    {
+        var db = CreateArrayUdtDb();
+        var encoder = new UdtJsonEncoder(db);
+        var encoded = encoder.Encode("""{"Values": "not an array"}""", 0x0500);
+        Assert.Equal(20, encoded.Length);
+        Assert.Equal(0, BinaryPrimitives.ReadInt32LittleEndian(encoded));
+    }
+
     [Fact]
     public void RoundTrip_EncodeAndDecode()
     {

@@ -218,4 +218,176 @@ public class PlcTagValueTests
         Assert.Equal(PlcDataType.Structure, PlcTagValue.FromStructure(
             new Dictionary<string, PlcTagValue>()).DataType);
     }
+
+    // --- Additional coverage: implicit conversions ---
+
+    [Fact]
+    public void ImplicitConversion_ToShort()
+    {
+        PlcTagValue v = PlcTagValue.FromInt(100);
+        short result = v;
+        Assert.Equal(100, result);
+    }
+
+    [Fact]
+    public void ImplicitConversion_ToUShort()
+    {
+        PlcTagValue v = PlcTagValue.FromUInt(500);
+        ushort result = v;
+        Assert.Equal(500, result);
+    }
+
+    [Fact]
+    public void ImplicitConversion_ToLong()
+    {
+        PlcTagValue v = PlcTagValue.FromLInt(1000L);
+        long result = v;
+        Assert.Equal(1000L, result);
+    }
+
+    [Fact]
+    public void ImplicitConversion_ToULong()
+    {
+        PlcTagValue v = PlcTagValue.FromULInt(2000UL);
+        ulong result = v;
+        Assert.Equal(2000UL, result);
+    }
+
+    [Fact]
+    public void ImplicitConversion_ToUInt()
+    {
+        PlcTagValue v = PlcTagValue.FromUDInt(999U);
+        uint result = v;
+        Assert.Equal(999U, result);
+    }
+
+    // --- Typed accessors ---
+
+    [Fact]
+    public void AsSByte_ConvertsCorrectly()
+    {
+        var v = PlcTagValue.FromSInt(-10);
+        Assert.Equal((sbyte)-10, v.AsSByte());
+    }
+
+    [Fact]
+    public void AsByte_ConvertsCorrectly()
+    {
+        var v = PlcTagValue.FromUSInt(200);
+        Assert.Equal((byte)200, v.AsByte());
+    }
+
+    [Fact]
+    public void AsUInt16_ConvertsCorrectly()
+    {
+        var v = PlcTagValue.FromUInt(5000);
+        Assert.Equal((ushort)5000, v.AsUInt16());
+    }
+
+    [Fact]
+    public void AsUInt32_ConvertsCorrectly()
+    {
+        var v = PlcTagValue.FromUDInt(100000U);
+        Assert.Equal(100000U, v.AsUInt32());
+    }
+
+    [Fact]
+    public void AsInt64_ConvertsCorrectly()
+    {
+        var v = PlcTagValue.FromLInt(long.MaxValue);
+        Assert.Equal(long.MaxValue, v.AsInt64());
+    }
+
+    [Fact]
+    public void AsUInt64_ConvertsCorrectly()
+    {
+        var v = PlcTagValue.FromULInt(ulong.MaxValue);
+        Assert.Equal(ulong.MaxValue, v.AsUInt64());
+    }
+
+    // --- ToJson ---
+
+    [Fact]
+    public void ToJson_ReturnsJsonString()
+    {
+        var v = PlcTagValue.FromDInt(42);
+        var json = v.ToJson();
+        Assert.Contains("42", json);
+    }
+
+    [Fact]
+    public void ToJson_Indented_ReturnsFormattedJson()
+    {
+        var members = new Dictionary<string, PlcTagValue>
+        {
+            ["X"] = PlcTagValue.FromDInt(1),
+        };
+        var v = PlcTagValue.FromStructure(members);
+        var json = v.ToJson(indented: true);
+        Assert.Contains("X", json);
+    }
+
+    // --- AsArray ---
+
+    [Fact]
+    public void AsArray_ReturnsArrayForArrayValues()
+    {
+        var arr = new PlcTagValue[] { PlcTagValue.FromDInt(1), PlcTagValue.FromDInt(2) };
+        var v = new PlcTagValue(arr, PlcDataType.Dint);
+        var result = v.AsArray();
+        Assert.NotNull(result);
+        Assert.Equal(2, result!.Count);
+    }
+
+    [Fact]
+    public void AsArray_ReturnsNullForNonArray()
+    {
+        var v = PlcTagValue.FromDInt(42);
+        Assert.Null(v.AsArray());
+    }
+
+    [Fact]
+    public void ToString_Array()
+    {
+        var arr = new PlcTagValue[] { PlcTagValue.FromDInt(1), PlcTagValue.FromDInt(2) };
+        var v = new PlcTagValue(arr, PlcDataType.Dint);
+        var str = v.ToString();
+        Assert.Contains("[", str);
+        Assert.Contains("1", str);
+        Assert.Contains("2", str);
+    }
+
+    // --- Equality edge cases ---
+
+    [Fact]
+    public void Equals_Object_ReturnsFalse_ForNonPlcTagValue()
+    {
+        var v = PlcTagValue.FromDInt(42);
+        Assert.False(v.Equals((object)"not a tag value"));
+    }
+
+    [Fact]
+    public void Equals_Object_ReturnsTrue_ForMatchingPlcTagValue()
+    {
+        var a = PlcTagValue.FromDInt(42);
+        var b = PlcTagValue.FromDInt(42);
+        Assert.True(a.Equals((object)b));
+    }
+
+    [Fact]
+    public void GetHashCode_SameForEqualValues()
+    {
+        var a = PlcTagValue.FromDInt(42);
+        var b = PlcTagValue.FromDInt(42);
+        Assert.Equal(a.GetHashCode(), b.GetHashCode());
+    }
+
+    [Fact]
+    public void GetHashCode_DiffersForDifferentValues()
+    {
+        var a = PlcTagValue.FromDInt(42);
+        var b = PlcTagValue.FromDInt(43);
+        // Not guaranteed to differ, but typically does
+        Assert.NotEqual(a.GetHashCode(), b.GetHashCode());
+    }
 }

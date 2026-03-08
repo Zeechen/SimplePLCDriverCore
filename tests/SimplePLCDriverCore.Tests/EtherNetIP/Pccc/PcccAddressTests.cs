@@ -440,4 +440,252 @@ public class PcccAddressTests
         var addr = PcccAddress.Parse("T4:0.ACC");
         Assert.Equal("T4:0.2", addr.ToString()); // ACC is sub-element 2
     }
+
+    // ==========================================================================
+    // Additional Counter Sub-Elements
+    // ==========================================================================
+
+    [Fact]
+    public void Parse_Counter_CountDownBit()
+    {
+        var addr = PcccAddress.Parse("C5:0.CD");
+        Assert.Equal(0, addr.SubElement);
+        Assert.Equal(14, addr.BitNumber);
+    }
+
+    [Fact]
+    public void Parse_Counter_UnderflowBit()
+    {
+        var addr = PcccAddress.Parse("C5:0.UN");
+        Assert.Equal(0, addr.SubElement);
+        Assert.Equal(11, addr.BitNumber);
+    }
+
+    [Fact]
+    public void Parse_Counter_UpdateAccumBit()
+    {
+        var addr = PcccAddress.Parse("C5:0.UA");
+        Assert.Equal(0, addr.SubElement);
+        Assert.Equal(10, addr.BitNumber);
+    }
+
+    [Fact]
+    public void Parse_Counter_Preset()
+    {
+        var addr = PcccAddress.Parse("C5:0.PRE");
+        Assert.Equal(1, addr.SubElement);
+        Assert.Equal(-1, addr.BitNumber);
+    }
+
+    [Fact]
+    public void Parse_Counter_NumericSubElement()
+    {
+        var addr = PcccAddress.Parse("C5:0.1");
+        Assert.Equal(1, addr.SubElement);
+        Assert.Equal(-1, addr.BitNumber);
+    }
+
+    [Fact]
+    public void Parse_Counter_UnknownSubElement_Throws()
+    {
+        Assert.Throws<FormatException>(() => PcccAddress.Parse("C5:0.INVALID"));
+    }
+
+    // ==========================================================================
+    // Additional Control Sub-Elements
+    // ==========================================================================
+
+    [Fact]
+    public void Parse_Control_EnableBit()
+    {
+        var addr = PcccAddress.Parse("R6:0.EN");
+        Assert.Equal(0, addr.SubElement);
+        Assert.Equal(15, addr.BitNumber);
+    }
+
+    [Fact]
+    public void Parse_Control_EnableUnload()
+    {
+        var addr = PcccAddress.Parse("R6:0.EU");
+        Assert.Equal(0, addr.SubElement);
+        Assert.Equal(14, addr.BitNumber);
+    }
+
+    [Fact]
+    public void Parse_Control_EmptyBit()
+    {
+        var addr = PcccAddress.Parse("R6:0.EM");
+        Assert.Equal(0, addr.SubElement);
+        Assert.Equal(12, addr.BitNumber);
+    }
+
+    [Fact]
+    public void Parse_Control_ErrorBit()
+    {
+        var addr = PcccAddress.Parse("R6:0.ER");
+        Assert.Equal(0, addr.SubElement);
+        Assert.Equal(11, addr.BitNumber);
+    }
+
+    [Fact]
+    public void Parse_Control_UnloadBit()
+    {
+        var addr = PcccAddress.Parse("R6:0.UL");
+        Assert.Equal(0, addr.SubElement);
+        Assert.Equal(10, addr.BitNumber);
+    }
+
+    [Fact]
+    public void Parse_Control_InhibitBit()
+    {
+        var addr = PcccAddress.Parse("R6:0.IN");
+        Assert.Equal(0, addr.SubElement);
+        Assert.Equal(9, addr.BitNumber);
+    }
+
+    [Fact]
+    public void Parse_Control_FoundBit()
+    {
+        var addr = PcccAddress.Parse("R6:0.FD");
+        Assert.Equal(0, addr.SubElement);
+        Assert.Equal(8, addr.BitNumber);
+    }
+
+    [Fact]
+    public void Parse_Control_NumericSubElement()
+    {
+        var addr = PcccAddress.Parse("R6:0.2");
+        Assert.Equal(2, addr.SubElement);
+        Assert.Equal(-1, addr.BitNumber);
+    }
+
+    [Fact]
+    public void Parse_Control_UnknownSubElement_Throws()
+    {
+        Assert.Throws<FormatException>(() => PcccAddress.Parse("R6:0.INVALID"));
+    }
+
+    // ==========================================================================
+    // Timer Numeric Sub-Element and Unknown
+    // ==========================================================================
+
+    [Fact]
+    public void Parse_Timer_NumericSubElement()
+    {
+        var addr = PcccAddress.Parse("T4:0.1");
+        Assert.Equal(1, addr.SubElement);
+        Assert.Equal(-1, addr.BitNumber);
+    }
+
+    [Fact]
+    public void Parse_Timer_UnknownSubElement_Throws()
+    {
+        Assert.Throws<FormatException>(() => PcccAddress.Parse("T4:0.INVALID"));
+    }
+
+    // ==========================================================================
+    // ToString with SubElement AND BitNumber
+    // ==========================================================================
+
+    [Fact]
+    public void ToString_SubElementAndBit()
+    {
+        var addr = PcccAddress.Parse("T4:0.EN");
+        var str = addr.ToString();
+        // EN maps to SubElement=0, Bit=15
+        Assert.Contains("/15", str);
+        Assert.Contains(".0", str);
+    }
+
+    // ==========================================================================
+    // GetByteOffset additional cases
+    // ==========================================================================
+
+    [Fact]
+    public void GetByteOffset_Counter_Element2()
+    {
+        var addr = PcccAddress.Parse("C5:2");
+        Assert.Equal(12, addr.GetByteOffset()); // 2 * 6
+    }
+
+    [Fact]
+    public void GetByteOffset_Control_LEN()
+    {
+        var addr = PcccAddress.Parse("R6:1.LEN");
+        Assert.Equal(8, addr.GetByteOffset()); // 1*6 + 1*2
+    }
+
+    [Fact]
+    public void GetByteOffset_Long()
+    {
+        var addr = PcccAddress.Parse("L10:3");
+        Assert.Equal(12, addr.GetByteOffset()); // 3 * 4
+    }
+
+    [Fact]
+    public void GetByteOffset_BitFile()
+    {
+        var addr = PcccAddress.Parse("B3:2/5");
+        Assert.Equal(4, addr.GetByteOffset()); // 2 * 2 (bit file has 2-byte elements)
+    }
+
+    [Fact]
+    public void GetByteOffset_Output()
+    {
+        var addr = PcccAddress.Parse("O:3");
+        Assert.Equal(6, addr.GetByteOffset()); // 3 * 2
+    }
+
+    // ==========================================================================
+    // GetReadSize additional cases
+    // ==========================================================================
+
+    [Fact]
+    public void GetReadSize_Long()
+    {
+        var addr = PcccAddress.Parse("L10:0");
+        Assert.Equal(4, addr.GetReadSize());
+    }
+
+    [Fact]
+    public void GetReadSize_Counter_Full()
+    {
+        var addr = PcccAddress.Parse("C5:0");
+        Assert.Equal(6, addr.GetReadSize());
+    }
+
+    [Fact]
+    public void GetReadSize_Counter_SubElement()
+    {
+        var addr = PcccAddress.Parse("C5:0.ACC");
+        Assert.Equal(2, addr.GetReadSize());
+    }
+
+    [Fact]
+    public void GetReadSize_Control_Full()
+    {
+        var addr = PcccAddress.Parse("R6:0");
+        Assert.Equal(6, addr.GetReadSize());
+    }
+
+    [Fact]
+    public void GetReadSize_Control_SubElement()
+    {
+        var addr = PcccAddress.Parse("R6:0.LEN");
+        Assert.Equal(2, addr.GetReadSize());
+    }
+
+    [Fact]
+    public void GetReadSize_Output()
+    {
+        var addr = PcccAddress.Parse("O:0");
+        Assert.Equal(2, addr.GetReadSize());
+    }
+
+    [Fact]
+    public void GetReadSize_Ascii()
+    {
+        var addr = PcccAddress.Parse("A9:0");
+        Assert.Equal(2, addr.GetReadSize());
+    }
 }
