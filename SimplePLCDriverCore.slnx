@@ -11,5 +11,7 @@
     <Project Path="src/Examples/TagBrowsing/TagBrowsing.csproj" />
     <Project Path="src/Examples/ConnectionManagement/ConnectionManagement.csproj" />
     <Project Path="src/Examples/SlcReadWrite/SlcReadWrite.csproj" />
+    <Project Path="src/Examples/S7ReadWrite/S7ReadWrite.csproj" />
+    <Project Path="src/Examples/FinsReadWrite/FinsReadWrite.csproj" />
   </Folder>
 </Solution>

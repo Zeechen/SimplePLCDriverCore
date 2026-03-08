@@ -79,4 +79,60 @@ public static class PlcDriverFactory
     {
         return new SlcDriver(host, slot, SlcPlcType.Plc5, options);
     }
+
+    // --- Siemens S7 ---
+
+    /// <summary>
+    /// Create a driver for Siemens S7-1200 or S7-1500 PLCs (rack 0, slot 0).
+    /// Uses S7comm over ISO-on-TCP with DB/I/Q/M addressing.
+    /// </summary>
+    /// <param name="host">PLC IP address or hostname.</param>
+    /// <param name="options">Optional connection options.</param>
+    public static SiemensDriver CreateS7_1200(
+        string host, ConnectionOptions? options = null)
+    {
+        return new SiemensDriver(host, rack: 0, slot: 0, options);
+    }
+
+    /// <summary>
+    /// Create a driver for Siemens S7-300 or S7-400 PLCs.
+    /// Uses S7comm over ISO-on-TCP with DB/I/Q/M addressing.
+    /// </summary>
+    /// <param name="host">PLC IP address or hostname.</param>
+    /// <param name="rack">Rack number (typically 0).</param>
+    /// <param name="slot">Slot number (typically 2 for S7-300/400).</param>
+    /// <param name="options">Optional connection options.</param>
+    public static SiemensDriver CreateS7_300(
+        string host, byte rack = 0, byte slot = 2, ConnectionOptions? options = null)
+    {
+        return new SiemensDriver(host, rack, slot, options);
+    }
+
+    /// <summary>
+    /// Create a driver for any Siemens S7 PLC with explicit rack and slot.
+    /// Uses S7comm over ISO-on-TCP with DB/I/Q/M addressing.
+    /// </summary>
+    /// <param name="host">PLC IP address or hostname.</param>
+    /// <param name="rack">Rack number (typically 0).</param>
+    /// <param name="slot">Slot number (0 for S7-1200/1500, 2 for S7-300/400).</param>
+    /// <param name="options">Optional connection options.</param>
+    public static SiemensDriver CreateSiemens(
+        string host, byte rack = 0, byte slot = 0, ConnectionOptions? options = null)
+    {
+        return new SiemensDriver(host, rack, slot, options);
+    }
+
+    // --- Omron FINS ---
+
+    /// <summary>
+    /// Create a driver for Omron PLCs using FINS/TCP protocol.
+    /// Supports NJ, NX, CJ, CP, and CS series with D/CIO/W/H/A addressing.
+    /// </summary>
+    /// <param name="host">PLC IP address or hostname.</param>
+    /// <param name="options">Optional connection options.</param>
+    public static OmronDriver CreateOmron(
+        string host, ConnectionOptions? options = null)
+    {
+        return new OmronDriver(host, options);
+    }
 }

@@ -17,16 +17,16 @@
 
 ### Target PLC Support
 
-| Priority | PLC Family | Protocol | Phase |
-|----------|-----------|----------|-------|
-| P0 (Must) | Allen-Bradley ControlLogix | EtherNet/IP + CIP | Phase 1 |
-| P0 (Must) | Allen-Bradley CompactLogix | EtherNet/IP + CIP | Phase 1 |
-| P1 (Should) | Allen-Bradley SLC 500 | PCCC over CIP | Phase 2 |
-| P1 (Should) | Allen-Bradley MicroLogix | PCCC over CIP | Phase 2 |
-| P1 (Should) | Allen-Bradley PLC-5 | PCCC over CIP | Phase 2 |
-| P2 (Nice) | Siemens S7-300/400/1200/1500 | S7comm (ISO-on-TCP) | Phase 3 |
-| P2 (Nice) | Omron NJ/NX/CJ/CP | FINS (TCP/UDP) | Phase 3 |
-| P3 (Future) | Any Modbus device | Modbus TCP | Phase 4 |
+| Priority | PLC Family | Protocol | Phase | Status |
+|----------|-----------|----------|-------|--------|
+| P0 (Must) | Allen-Bradley ControlLogix | EtherNet/IP + CIP | Phase 1 | ✅ Done |
+| P0 (Must) | Allen-Bradley CompactLogix | EtherNet/IP + CIP | Phase 1 | ✅ Done |
+| P1 (Should) | Allen-Bradley SLC 500 | PCCC over CIP | Phase 2 | ✅ Done |
+| P1 (Should) | Allen-Bradley MicroLogix | PCCC over CIP | Phase 2 | ✅ Done |
+| P1 (Should) | Allen-Bradley PLC-5 | PCCC over CIP | Phase 2 | ✅ Done |
+| P2 (Nice) | Siemens S7-300/400/1200/1500 | S7comm (ISO-on-TCP) | Phase 3 | ✅ Done |
+| P2 (Nice) | Omron NJ/NX/CJ/CP | FINS (TCP/UDP) | Phase 3 | ✅ Done |
+| P3 (Future) | Any Modbus device | Modbus TCP | Phase 4 | Planned |
 
 ---
 
@@ -108,8 +108,7 @@ SimplePLCDriverCore/
 |   |   +-- Abstractions/                        # Public interfaces & contracts
 |   |   |   +-- IPlcDriver.cs                    # Core driver interface
 |   |   |   +-- ITagBrowser.cs                   # Tag/metadata discovery
-|   |   |   +-- IPlcConnection.cs                # Connection management
-|   |   |   +-- PlcValue.cs                      # Universal typeless value wrapper
+|   |   |   +-- PlcTagValue.cs                   # Universal typeless value wrapper (was PlcValue.cs)
 |   |   |   +-- TagResult.cs                     # Operation result type
 |   |   |   +-- PlcTagInfo.cs                    # Tag metadata descriptor
 |   |   |   +-- PlcDataType.cs                   # Data type enumeration
@@ -130,8 +129,8 @@ SimplePLCDriverCore/
 |   |   +-- Protocols/
 |   |   |   +-- EtherNetIP/                      # EtherNet/IP + CIP stack
 |   |   |   |   +-- EipSession.cs                # EtherNet/IP session management
-|   |   |   |   +-- EipEncapsulation.cs           # 24-byte header encode/decode
-|   |   |   |   +-- Cip/
+|   |   |   |   +-- EipEncapsulation.cs          # 24-byte header encode/decode
+|   |   |   |   +-- Cip/                         # CIP protocol layer
 |   |   |   |   |   +-- CipMessage.cs            # CIP message builder
 |   |   |   |   |   +-- CipPath.cs               # Symbolic/logical path encoding
 |   |   |   |   |   +-- CipTypes.cs              # CIP data type codes & codec
@@ -140,12 +139,13 @@ SimplePLCDriverCore/
 |   |   |   |   |   +-- MultiServicePacket.cs    # Batch request builder
 |   |   |   |   |   +-- SymbolObject.cs          # Class 0x6B tag browsing
 |   |   |   |   |   +-- TemplateObject.cs        # Class 0x6C UDT reading
-|   |   |   |   +-- Pccc/
-|   |   |   |   |   +-- PcccCommand.cs           # PCCC command builder
-|   |   |   |   |   +-- PcccAddress.cs           # SLC address parser
-|   |   |   |   |   +-- PcccTypes.cs             # PCCC data types
+|   |   |   |   |   +-- TagOperations.cs         # High-level tag read/write operations
+|   |   |   |   +-- Pccc/                        # PCCC protocol layer (Phase 2) ✅
+|   |   |   |       +-- PcccAddress.cs           # SLC address parser (regex-based)
+|   |   |   |       +-- PcccCommand.cs           # CIP Execute PCCC frame builder
+|   |   |   |       +-- PcccTypes.cs             # PCCC file types, encode/decode
 |   |   |   |
-|   |   |   +-- S7/                              # Siemens S7comm stack
+|   |   |   +-- S7/                              # Siemens S7comm stack (Phase 3)
 |   |   |   |   +-- S7Session.cs                 # TPKT+COTP+S7 session
 |   |   |   |   +-- S7Message.cs                 # S7 read/write PDU builder
 |   |   |   |   +-- S7Address.cs                 # DB/area addressing
@@ -153,44 +153,45 @@ SimplePLCDriverCore/
 |   |   |   |   +-- CotpPacket.cs                # ISO transport (COTP)
 |   |   |   |   +-- TpktPacket.cs                # TPKT framing
 |   |   |   |
-|   |   |   +-- Fins/                            # Omron FINS stack
+|   |   |   +-- Fins/                            # Omron FINS stack (Phase 3)
 |   |   |   |   +-- FinsSession.cs
 |   |   |   |   +-- FinsMessage.cs
 |   |   |   |   +-- FinsAddress.cs
 |   |   |   |
-|   |   |   +-- Modbus/                          # Modbus TCP stack
+|   |   |   +-- Modbus/                          # Modbus TCP stack (Phase 4)
 |   |   |       +-- ModbusSession.cs
 |   |   |       +-- ModbusMessage.cs
 |   |   |
 |   |   +-- Drivers/                             # High-level driver implementations
-|   |   |   +-- LogixDriver.cs                   # ControlLogix/CompactLogix
-|   |   |   +-- SlcDriver.cs                     # SLC/MicroLogix/PLC-5
-|   |   |   +-- SiemensDriver.cs                 # Siemens S7
-|   |   |   +-- OmronDriver.cs                   # Omron FINS
-|   |   |   +-- ModbusDriver.cs                  # Modbus TCP
-|   |   |   +-- PlcDriverFactory.cs              # Factory for creating drivers
+|   |   |   +-- LogixDriver.cs                   # ControlLogix/CompactLogix ✅
+|   |   |   +-- SlcDriver.cs                     # SLC/MicroLogix/PLC-5 ✅
+|   |   |   +-- SiemensDriver.cs                 # Siemens S7 (Phase 3)
+|   |   |   +-- OmronDriver.cs                   # Omron FINS (Phase 3)
+|   |   |   +-- ModbusDriver.cs                  # Modbus TCP (Phase 4)
+|   |   |   +-- PlcDriverFactory.cs              # Factory for creating drivers ✅
 |   |   |
 |   |   +-- TypeSystem/                          # Typeless value system
-|   |       +-- PlcValueConverter.cs             # Type detection & conversion
-|   |       +-- StructureDecoder.cs              # UDT byte[] -> PlcValue decoder
-|   |       +-- StructureEncoder.cs              # PlcValue -> byte[] encoder
-|   |       +-- DataTypeRegistry.cs              # Per-connection type cache
+|   |       +-- TagDatabase.cs                   # Per-connection tag/UDT cache (was DataTypeRegistry)
+|   |       +-- StructureDecoder.cs              # UDT byte[] -> PlcTagValue decoder
+|   |       +-- StructureEncoder.cs              # PlcTagValue -> byte[] encoder
 |   |
-|   +-- SimplePLCDriverCore.Extensions/          # Optional DI/hosting extensions
+|   +-- Examples/                                # Usage examples
+|   |   +-- BasicReadWrite/                      # Logix single tag read/write ✅
+|   |   +-- BatchOperations/                     # High-performance batch operations ✅
+|   |   +-- TagBrowsing/                         # Metadata discovery ✅
+|   |   +-- ConnectionManagement/                # Connection options and patterns ✅
+|   |   +-- SlcReadWrite/                        # SLC/MicroLogix/PLC-5 read/write ✅
+|   |
+|   +-- SimplePLCDriverCore.Extensions/          # Optional DI/hosting extensions (future)
 |       +-- ServiceCollectionExtensions.cs
 |       +-- PlcHealthCheck.cs
 |
 +-- tests/
-|   +-- SimplePLCDriverCore.Tests/               # Unit tests
-|   +-- SimplePLCDriverCore.IntegrationTests/    # Integration tests (real PLC)
+|   +-- SimplePLCDriverCore.Tests/               # Unit tests (479 tests) ✅
+|   +-- SimplePLCDriverCore.IntegrationTests/    # Integration tests (real PLC - future)
 |
-+-- samples/
-|   +-- BasicReadWrite/                          # Simple console app
-|   +-- BatchOperations/                         # Multi-tag batch demo
-|   +-- TagBrowsing/                             # Metadata discovery demo
-|   +-- MultiPlcTypes/                           # Cross-vendor demo
-|
-+-- SimplePLCDriverCore.sln
++-- SimplePLCDriverCore.slnx
++-- SimplePLCDriver_Plan.md
 +-- README.md
 +-- LICENSE
 ```
@@ -425,19 +426,72 @@ foreach (var udt in udts)
 }
 ```
 
-#### SLC/MicroLogix (File-based addressing)
+#### SLC/MicroLogix/PLC-5 (File-based addressing)
 
 ```csharp
-await using var plc = PlcDriverFactory.CreateSlc("192.168.1.50");
-await plc.ConnectAsync();
+// --- Driver Creation ---
+// SLC 500
+await using var slc = PlcDriverFactory.CreateSlc("192.168.1.50");
+await slc.ConnectAsync();
 
-// SLC-style addressing
-var intVal = await plc.ReadAsync("N7:0");     // Integer file 7, element 0
-var floatVal = await plc.ReadAsync("F8:1");   // Float file 8, element 1
-var bitVal = await plc.ReadAsync("B3:0/5");   // Bit file 3, element 0, bit 5
+// MicroLogix (same API, different internal handshaking)
+await using var mlx = PlcDriverFactory.CreateMicroLogix("192.168.1.60");
 
-await plc.WriteAsync("N7:0", 100);
+// PLC-5
+await using var plc5 = PlcDriverFactory.CreatePlc5("192.168.1.70");
+
+// --- Reading All File Types ---
+var intVal   = await slc.ReadAsync("N7:0");      // Integer file 7, element 0
+var floatVal = await slc.ReadAsync("F8:1");      // Float file 8, element 1
+var bitVal   = await slc.ReadAsync("B3:0/5");    // Bit file 3, element 0, bit 5
+var strVal   = await slc.ReadAsync("ST9:0");     // String file 9, element 0
+var longVal  = await slc.ReadAsync("L10:0");     // Long integer file 10, element 0
+
+// Implicit conversion
+short intValue = intVal.Value;
+float floatValue = floatVal.Value;
+bool bitValue = bitVal.Value;
+string text = strVal.Value;
+
+// --- Timer/Counter/Control Structures ---
+var timer = await slc.ReadAsync("T4:0");          // Full timer (6 bytes: control/PRE/ACC)
+var members = timer.Value.AsStructure();
+Console.WriteLine($"PRE={members!["PRE"]}, ACC={members["ACC"]}, DN={members["DN"]}");
+
+var acc = await slc.ReadAsync("T4:0.ACC");        // Just the accumulator
+var counter = await slc.ReadAsync("C5:0");        // Full counter structure
+var control = await slc.ReadAsync("R6:0");        // Full control structure
+
+// --- Writing ---
+await slc.WriteAsync("N7:0", 100);
+await slc.WriteAsync("F8:0", 3.14f);
+await slc.WriteAsync("B3:0/5", true);             // Read-modify-write for bits
+await slc.WriteAsync("ST9:0", "Hello SLC!");
+await slc.WriteAsync("T4:0.PRE", (short)5000);    // Timer preset
+
+// --- Batch Operations (sequential - PCCC has no batch mechanism) ---
+var results = await slc.ReadAsync(new[] { "N7:0", "N7:1", "F8:0", "B3:0/5" });
+foreach (var r in results)
+    Console.WriteLine($"{r.TagName} = {r.Value} ({r.TypeName})");
+
+await slc.WriteAsync(new[]
+{
+    ("N7:0", (object)42),
+    ("N7:1", (object)99),
+    ("F8:0", (object)2.718f),
+});
 ```
+
+**Supported SLC Address Formats:**
+
+| Format | Example | Description |
+|--------|---------|-------------|
+| `Xf:e` | `N7:0` | File type + file number + element |
+| `Xf:e/b` | `B3:0/5` | Bit-level access (also works with `.` separator) |
+| `Xf:e.sub` | `T4:0.ACC` | Timer/Counter/Control sub-element |
+| `X:e` | `N:0` | Default file number (N=7, B=3, T=4, C=5, R=6, etc.) |
+
+**Supported File Types:** O (Output), I (Input), S (Status), B (Bit), T (Timer), C (Counter), R (Control), N (Integer), F (Float), ST (String), A (ASCII), L (Long)
 
 #### Siemens S7 (Phase 3)
 
@@ -527,16 +581,21 @@ This is the primary protocol stack for Allen-Bradley ControlLogix/CompactLogix.
 #### Layer Architecture
 
 ```
-+-------------------------------------------+
-|          LogixDriver (user API)            |  Drivers/
-|  - read(), write(), getTags(), getUdts()   |
-+-------------------------------------------+
-|         CIP Application Layer              |  Protocols/EtherNetIP/Cip/
++-------------------------------------------+-------------------------------------------+
+|       LogixDriver (user API)              |       SlcDriver (user API)                |
+|  IPlcDriver + ITagBrowser                 |  IPlcDriver                               |
+|  read(), write(), getTags(), getUdts()    |  read(), write() (file-based addressing)  |
++-------------------------------------------+-------------------------------------------+
+|  TagOperations + TagDatabase              |  PcccCommand + PcccTypes + PcccAddress    |
+|  Batch, fragmented, structure decode      |  PCCC frame build/parse, type mapping     |
++-------------------------------------------+-------------------------------------------+
+|         CIP Application Layer              |   Protocols/EtherNetIP/Cip/
 |  - ReadTag(0x4C), WriteTag(0x4D)           |
 |  - MultiService(0x0A), ForwardOpen(0x54)   |
 |  - SymbolObject(0x6B), Template(0x6C)      |
+|  - Execute PCCC(0x4B) to Class 0x67        |
 +-------------------------------------------+
-|       EtherNet/IP Encapsulation            |  Protocols/EtherNetIP/
+|       EtherNet/IP Encapsulation            |   Protocols/EtherNetIP/
 |  - RegisterSession, SendRRData,            |
 |    SendUnitData                            |
 +-------------------------------------------+
@@ -606,16 +665,38 @@ const ushort CIP_STRING= 0x00DA;
 9. TCP Close
 ```
 
-### 5.2 PCCC over CIP (Phase 2 - SLC/MicroLogix/PLC5)
+### 5.2 PCCC over CIP (Phase 2 - SLC/MicroLogix/PLC5) ✅ IMPLEMENTED
 
 ```
 Same TCP+EtherNet/IP transport, but instead of Forward Open:
-1. Use Unconnected Send (SendRRData)
-2. CIP message wraps PCCC command to Class 0x67 (PCCC Object)
-3. PCCC Protected Typed Logical Read (cmd 0x0F, fn 0x68)
-4. PCCC Protected Typed Logical Write (cmd 0x0F, fn 0x67)
-5. Address encoding: file_type + file_number + element + sub_element
+1. TCP Connect to port 44818
+2. RegisterSession -> get session handle (NO Forward Open needed)
+3. Use Unconnected Send (SendRRData) for all requests
+4. CIP Execute PCCC service (0x4B) to Class 0x67 (PCCC Object), Instance 1
+5. Requestor ID: length(1)=6, vendor_id(2 LE), serial_number(4 LE)
+6. PCCC Protected Typed Logical Read with 3 Address Fields (cmd 0x0F, fn 0xA2)
+7. PCCC Protected Typed Logical Write with 3 Address Fields (cmd 0x0F, fn 0xAA)
+8. Address encoding: file_type + file_number + element_number (with sub-element for T/C/R)
+9. UnregisterSession on disconnect
+10. TCP Close
 ```
+
+#### PCCC File Type Codes
+
+| File Type | Code | Element Size | Notes |
+|-----------|------|-------------|-------|
+| Output (O) | 0x82 | 2 bytes | |
+| Input (I) | 0x83 | 2 bytes | |
+| Status (S) | 0x84 | 2 bytes | |
+| Bit (B) | 0x85 | 2 bytes | Individual bits via read-modify-write |
+| Timer (T) | 0x86 | 6 bytes | 3 words: control/PRE/ACC |
+| Counter (C) | 0x87 | 6 bytes | 3 words: control/PRE/ACC |
+| Control (R) | 0x88 | 6 bytes | 3 words: control/LEN/POS |
+| Integer (N) | 0x89 | 2 bytes | |
+| Float (F) | 0x8A | 4 bytes | |
+| String (ST) | 0x8D | 84 bytes | 2-byte length + 82 chars |
+| ASCII (A) | 0x8E | 2 bytes | |
+| Long (L) | 0x91 | 4 bytes | |
 
 ### 5.3 S7comm (Phase 3 - Siemens)
 
@@ -754,34 +835,67 @@ For UDTs:
 - [x] Sample applications (BasicReadWrite, BatchOperations, TagBrowsing, ConnectionManagement)
 - [x] NuGet package setup
 
-### Phase 2: SLC/MicroLogix/PLC-5 Support (Weeks 7-9)
+### Phase 2: SLC/MicroLogix/PLC-5 Support (Weeks 7-9) ✅ COMPLETED
 
-- [ ] `PcccAddress` - SLC address parser (N7:0, F8:1, B3:0/5, etc.)
-- [ ] `PcccCommand` - PCCC frame builder (Protected Typed Logical Read/Write)
-- [ ] PCCC data type mapping
-- [ ] `SlcDriver` - high-level API
-- [ ] MicroLogix variant handling
-- [ ] PLC-5 variant handling
-- [ ] Integration tests with real SLC/MicroLogix hardware
+- [x] `PcccAddress` - SLC address parser (N7:0, F8:1, B3:0/5, T4:0.ACC, etc.)
+- [x] `PcccCommand` - PCCC frame builder (CIP Execute PCCC 0x4B wrapping Protected Typed Logical Read/Write)
+- [x] `PcccTypes` - PCCC data type mapping (file types, element sizes, value encode/decode)
+- [x] `SlcDriver` - high-level API implementing `IPlcDriver`
+- [x] MicroLogix variant handling (via `SlcPlcType.MicroLogix`)
+- [x] PLC-5 variant handling (via `SlcPlcType.Plc5`)
+- [x] `PlcDriverFactory` updated with `CreateSlc()`, `CreateMicroLogix()`, `CreatePlc5()`
+- [x] Unit tests for PcccAddress (~40 tests), PcccTypes (~40 tests), PcccCommand (~15 tests), SlcDriver (~20 tests)
+- [x] SlcReadWrite example application
+- [ ] Integration tests with real SLC/MicroLogix hardware (deferred - requires physical hardware)
 
-### Phase 3: Siemens & Omron (Weeks 10-14)
+#### Phase 2 Implementation Notes
 
-#### Siemens S7 (Weeks 10-12)
-- [ ] `TpktPacket` / `CotpPacket` - ISO transport framing
-- [ ] `S7Session` - COTP+S7 connection handshake
-- [ ] `S7Message` - read/write PDU builder
-- [ ] `S7Address` - DB.DBx addressing parser
-- [ ] `S7Types` - data type codec (big-endian!)
-- [ ] `SiemensDriver` - high-level API
-- [ ] Multi-item request support (S7's batch mechanism)
-- [ ] Integration tests with S7-1200/1500
+**Architecture Decisions:**
+- SLC/MicroLogix/PLC-5 use **unconnected messaging** (SendRRData) rather than connected messaging (Forward Open + SendUnitData). No Forward Open is needed - only TCP + RegisterSession.
+- PCCC commands are wrapped inside CIP Execute PCCC service (0x4B) targeting PCCC Object (Class 0x67, Instance 1).
+- PCCC uses Protected Typed Logical Read with 3 Address Fields (function code 0xA2) and Protected Typed Logical Write (0xAA).
+- Batch operations are **sequential** since PCCC does not support CIP Multiple Service Packet.
+- **Bit-level writes** use a read-modify-write pattern since PCCC writes entire words.
+- SLC STRING format is 2-byte length prefix + 82 chars = 84 bytes total (differs from Logix STRING's 4-byte prefix + 82 chars = 88 bytes).
+- Timer/Counter/Control structures are decoded into dictionaries with named members (PRE, ACC, EN, DN, TT, CU, CD, LEN, POS, etc.).
 
-#### Omron FINS (Weeks 13-14)
-- [ ] `FinsSession` - FINS/TCP handshake
-- [ ] `FinsMessage` - memory area read/write
-- [ ] `FinsAddress` - area/address parsing
-- [ ] `OmronDriver` - high-level API
-- [ ] Integration tests with Omron NJ/NX
+**Files Created:**
+- `src/SimplePLCDriverCore/Protocols/EtherNetIP/Pccc/PcccAddress.cs` - Regex-based address parser for all SLC file types
+- `src/SimplePLCDriverCore/Protocols/EtherNetIP/Pccc/PcccTypes.cs` - File type enum, element sizes, encode/decode for all types
+- `src/SimplePLCDriverCore/Protocols/EtherNetIP/Pccc/PcccCommand.cs` - CIP+PCCC frame builder and response parser
+- `src/SimplePLCDriverCore/Drivers/SlcDriver.cs` - High-level driver with `SlcPlcType` enum
+- `src/Examples/SlcReadWrite/` - Example application
+- `tests/SimplePLCDriverCore.Tests/EtherNetIP/Pccc/PcccAddressTests.cs`
+- `tests/SimplePLCDriverCore.Tests/EtherNetIP/Pccc/PcccTypesTests.cs`
+- `tests/SimplePLCDriverCore.Tests/EtherNetIP/Pccc/PcccCommandTests.cs`
+- `tests/SimplePLCDriverCore.Tests/Drivers/SlcDriverTests.cs`
+
+**Test Count:** 479 total (319 Phase 1 + 160 Phase 2)
+
+### Phase 3: Siemens & Omron (Weeks 10-14) ✅ Done
+
+#### Siemens S7 (Weeks 10-12) ✅ Done
+- [x] `TpktPacket` / `CotpPacket` - ISO transport framing (TPKT RFC 1006 + COTP ISO 8073)
+- [x] `S7Session` - COTP CR/CC handshake + S7 Communication Setup with PDU negotiation
+- [x] `S7Message` - read/write PDU builder with multi-item support (12-byte item specs)
+- [x] `S7Address` - Full S7 addressing: DB (DBX/DBB/DBW/DBD/DBS), area (I/Q/M/E/A), timers/counters
+- [x] `S7Types` - Big-endian encode/decode for all S7 types (Bit, Byte, Word, DWord, Real, String)
+- [x] `SiemensDriver` - IPlcDriver with multi-item batch reads (up to 20 items per request)
+- [x] `PlcDriverFactory.CreateSiemens/CreateS7_1200/CreateS7_300` factory methods
+- [x] Unit tests: S7AddressTests, S7TypesTests, TpktPacketTests, CotpPacketTests, S7MessageTests, SiemensDriverTests
+- [x] S7ReadWrite example application
+
+#### Omron FINS (Weeks 13-14) ✅ Done
+- [x] `FinsSession` - FINS/TCP node address handshake
+- [x] `FinsMessage` - Memory Area Read (0x0101) / Write (0x0102) with FINS/TCP framing
+- [x] `FinsAddress` - Area parsing: CIO, W, H, D/DM, A, T, C, EM banks
+- [x] `FinsTypes` - Big-endian encode/decode for FINS word/bit data
+- [x] `OmronDriver` - IPlcDriver with sequential read/write operations
+- [x] `PlcDriverFactory.CreateOmron` factory method
+- [x] Unit tests: FinsAddressTests, FinsTypesTests, FinsMessageTests, OmronDriverTests
+- [x] FinsReadWrite example application
+
+**Phase 3 totals**: 682 passing tests (203 new tests added)
 
 ### Phase 4: Modbus & Polish (Weeks 15-16)
 
@@ -862,12 +976,15 @@ await pool.DisconnectAllAsync();             // disconnect all (registrations pr
 
 ## 9. Testing Strategy
 
-### 9.1 Unit Tests (No PLC Required)
+### 9.1 Unit Tests (No PLC Required) — 479 tests ✅
 
 - **Packet encoding/decoding**: Verify every protocol packet is correctly serialized/deserialized using known byte sequences from protocol specs and Wireshark captures.
 - **CIP path encoding**: Test symbolic segment encoding for various tag name patterns.
 - **Data type codec**: Test every CIP type code encode/decode round-trip.
-- **SLC address parser**: Test all address formats (N7:0, F8:1, B3:0/5, ST9:0, etc.)
+- **SLC address parser**: Test all address formats (N7:0, F8:1, B3:0/5, ST9:0, T4:0.ACC, etc.) — ~40 tests
+- **PCCC types**: Test element sizes, type names, PlcDataType mapping, decode/encode for all types including Timer/Counter/Control structures — ~40 tests
+- **PCCC command builder**: Test read/write request building, response parsing, unconnected send wrapping — ~15 tests
+- **SlcDriver**: Test connection, read/write for all data types, bit read-modify-write, batch ops, error cases, factory methods — ~20 tests
 - **PlcValue conversions**: Test all implicit and explicit conversion paths.
 - **Multiple Service Packet splitting**: Verify correct splitting when batch exceeds connection size.
 - **UDT decode**: Test structure decoding with mock template definitions.

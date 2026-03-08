@@ -21,8 +21,8 @@ A native .NET Core library for reading and writing PLC tags. No C/C++ wrappers, 
 | Allen-Bradley SLC 500 | Supported | PCCC over CIP |
 | Allen-Bradley MicroLogix | Supported | PCCC over CIP |
 | Allen-Bradley PLC-5 | Supported | PCCC over CIP |
-| Siemens S7-300/400/1200/1500 | Planned (Phase 3) | S7comm |
-| Omron NJ/NX/CJ/CP | Planned (Phase 3) | FINS |
+| Siemens S7-300/400/1200/1500 | Supported | S7comm over ISO-on-TCP |
+| Omron NJ/NX/CJ/CP | Supported | FINS over TCP |
 | Modbus TCP devices | Planned (Phase 4) | Modbus TCP |
 
 ## Supported Data Types
@@ -61,6 +61,28 @@ A native .NET Core library for reading and writing PLC tags. No C/C++ wrappers, 
 | Input | I | `short` | 2 bytes |
 | Status | S | `short` | 2 bytes |
 | ASCII | A | `short` | 2 bytes |
+
+### Siemens S7
+
+| S7 Type | Address | .NET Type | Bytes |
+|---|---|---|---|
+| BOOL | DB1.DBX0.0, I0.0, M0.0 | `bool` | 1 bit |
+| BYTE | DB1.DBB0, IB0, MB0 | `byte` | 1 |
+| WORD/INT | DB1.DBW0, IW0, MW0 | `short` | 2 |
+| DWORD/DINT | DB1.DBD0, ID0, MD0 | `int` | 4 |
+| REAL | DB1.DBD0 (transport=Real) | `float` | 4 |
+| STRING | DB1.DBS0.20 | `string` | 2 + maxLen |
+| TIMER | T0 | `short` | 2 |
+| COUNTER | C0 | `short` | 2 |
+
+### Omron FINS
+
+| FINS Type | Address | .NET Type | Bytes |
+|---|---|---|---|
+| BIT | CIO0.00, D0.5 | `bool` | 1 |
+| WORD | D0, CIO0, W0, H0, A0 | `short` | 2 |
+| Timer PV | T0 | `short` | 2 |
+| Counter PV | C0 | `short` | 2 |
 
 ## Quick Start
 
@@ -351,6 +373,64 @@ await using var mlx = PlcDriverFactory.CreateMicroLogix("192.168.1.60");
 await using var plc5 = PlcDriverFactory.CreatePlc5("192.168.1.70");
 ```
 
+### Siemens S7 (S7-300/400/1200/1500)
+
+```csharp
+using SimplePLCDriverCore.Drivers;
+
+// S7-1200/1500 (rack 0, slot 0)
+await using var s7 = PlcDriverFactory.CreateS7_1200("192.168.1.200");
+await s7.ConnectAsync();
+
+// S7-300/400 (rack 0, slot 2)
+// await using var s7 = PlcDriverFactory.CreateS7_300("192.168.1.100");
+
+// Custom rack/slot
+// await using var s7 = PlcDriverFactory.CreateSiemens("192.168.1.200", rack: 0, slot: 2);
+
+// Read data block values
+var word = await s7.ReadAsync("DB1.DBW0");     // Word (INT, 16-bit)
+var dword = await s7.ReadAsync("DB1.DBD4");    // Double word (DINT, 32-bit)
+var bit = await s7.ReadAsync("DB1.DBX8.0");    // Single bit
+var str = await s7.ReadAsync("DB1.DBS10.20");  // String (max 20 chars)
+
+// Read I/O and merker areas
+var input = await s7.ReadAsync("I0.0");        // Input bit
+var output = await s7.ReadAsync("QW0");        // Output word
+var merker = await s7.ReadAsync("MW0");        // Merker word
+
+// Write values
+await s7.WriteAsync("DB1.DBW0", (short)42);
+await s7.WriteAsync("DB1.DBD4", 100000);
+await s7.WriteAsync("DB1.DBX8.0", true);
+
+// Batch read (S7 multi-item read - up to 20 items per request)
+var results = await s7.ReadAsync(new[] { "DB1.DBW0", "DB1.DBD4", "MB0" });
+```
+
+### Omron FINS (NJ/NX/CJ/CP)
+
+```csharp
+using SimplePLCDriverCore.Drivers;
+
+await using var omron = PlcDriverFactory.CreateOmron("192.168.1.100");
+await omron.ConnectAsync();
+
+// Read memory areas
+var dm = await omron.ReadAsync("D100");       // DM area word
+var cio = await omron.ReadAsync("CIO0");      // CIO area word
+var bit = await omron.ReadAsync("CIO0.00");   // CIO bit
+var work = await omron.ReadAsync("W0");       // Work area
+var hold = await omron.ReadAsync("H0");       // Holding area
+
+// Write values
+await omron.WriteAsync("D100", (short)42);
+await omron.WriteAsync("CIO0.00", true);
+
+// Batch operations (sequential)
+var results = await omron.ReadAsync(new[] { "D100", "D101", "W0" });
+```
+
 ### SLC File-Based Addressing
 
 ```csharp
@@ -385,23 +465,21 @@ var results = await slc.ReadAsync(new[] { "N7:0", "N7:1", "F8:0" });
 ## Architecture
 
 ```
-+-------------------------------------------+-------------------------------------------+
-|  LogixDriver (IPlcDriver + ITagBrowser)   |  SlcDriver (IPlcDriver)                   |
-|  ReadAsync, WriteAsync, GetTagsAsync, ... |  ReadAsync, WriteAsync (file-based addr)  |
-+-------------------------------------------+-------------------------------------------+
-|  TagOperations + TagDatabase              |  PcccCommand + PcccTypes + PcccAddress    |
-|  Batch, fragmented, structure decode      |  PCCC frame build/parse, type mapping     |
-+-------------------------------------------+-------------------------------------------+
-|         CIP Application Layer              |   Protocols/EtherNetIP/Cip/
-|  ReadTag, WriteTag, MultiServicePacket,    |
-|  ForwardOpen, Execute PCCC (0x4B)          |
-+-------------------------------------------+
-|       EtherNet/IP Encapsulation            |   Protocols/EtherNetIP/
-|  RegisterSession, SendRRData, SendUnitData |
-+-------------------------------------------+
-|       TCP Transport (async)                |   Common/Transport/
-|  System.IO.Pipelines, ArrayPool<byte>      |
-+-------------------------------------------+
++------------------+------------------+------------------+------------------+
+|  LogixDriver     |  SlcDriver       |  SiemensDriver   |  OmronDriver     |
+|  (IPlcDriver +   |  (IPlcDriver)    |  (IPlcDriver)    |  (IPlcDriver)    |
+|   ITagBrowser)   |                  |                  |                  |
++------------------+------------------+------------------+------------------+
+|  CIP + Tags      |  PCCC over CIP   |  S7comm          |  FINS/TCP        |
+|  TagDatabase     |  PcccCommand     |  S7Message       |  FinsMessage     |
+|  MultiService    |  PcccTypes       |  S7Types         |  FinsTypes       |
++------------------+------------------+------------------+------------------+
+|  EtherNet/IP Encapsulation          |  TPKT + COTP     |  FINS/TCP Frame  |
+|  RegisterSession, SendRRData        |  ISO-on-TCP      |  Node Handshake  |
++-------------------------------------+------------------+------------------+
+|                    TCP Transport (async)                                   |
+|              System.IO.Pipelines, ArrayPool<byte>                         |
++---------------------------------------------------------------------------+
 ```
 
 ## How Typeless Access Works
@@ -425,7 +503,9 @@ SimplePLCDriverCore/
       Protocols/EtherNetIP/        # EtherNet/IP + CIP protocol implementation
         Cip/                       # CIP services, types, paths, tag operations
         Pccc/                      # PCCC protocol (SLC/MicroLogix/PLC-5)
-      Drivers/                     # High-level drivers (LogixDriver, SlcDriver)
+      Protocols/S7/                # S7comm protocol (Siemens)
+      Protocols/Fins/              # FINS protocol (Omron)
+      Drivers/                     # High-level drivers (LogixDriver, SlcDriver, SiemensDriver, OmronDriver)
       TypeSystem/                  # Tag database, structure decode/encode
     Examples/                      # Usage examples
       BasicReadWrite/              # Logix tag read/write
@@ -433,8 +513,10 @@ SimplePLCDriverCore/
       TagBrowsing/                 # Metadata discovery
       ConnectionManagement/        # Connection options and patterns
       SlcReadWrite/                # SLC/MicroLogix/PLC-5 read/write
+      S7ReadWrite/                 # Siemens S7 read/write
+      FinsReadWrite/               # Omron FINS read/write
   tests/
-    SimplePLCDriverCore.Tests/     # Unit tests (479 tests)
+    SimplePLCDriverCore.Tests/     # Unit tests (682 tests)
 ```
 
 ## Requirements
