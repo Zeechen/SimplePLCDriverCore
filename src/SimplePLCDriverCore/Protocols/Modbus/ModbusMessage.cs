@@ -16,6 +16,15 @@ internal static class ModbusFunctionCodes
     public const byte WriteSingleRegister = 0x06;
     public const byte WriteMultipleCoils = 0x0F;
     public const byte WriteMultipleRegisters = 0x10;
+
+    // Phase 5: Advanced function codes
+    public const byte Diagnostics = 0x08;
+    public const byte ReadFileRecord = 0x14;
+    public const byte WriteFileRecord = 0x15;
+    public const byte MaskWriteRegister = 0x16;
+    public const byte ReadWriteMultipleRegisters = 0x17;
+    public const byte ReadFifoQueue = 0x18;
+    public const byte EncapsulatedInterfaceTransport = 0x2B;
 }
 
 /// <summary>
@@ -234,6 +243,158 @@ internal static class ModbusMessage
         writer.WriteUInt8((byte)byteCount);
         writer.WriteBytes(coilBytes);
 
+        return writer.ToArray();
+    }
+
+    // ===== Phase 5: Advanced Function Code Builders =====
+
+    /// <summary>
+    /// Build a Diagnostics (FC 08) request.
+    /// </summary>
+    public static byte[] BuildDiagnostics(ushort transactionId, byte unitId,
+        ushort subFunction, ushort data)
+    {
+        using var writer = new PacketWriter(16);
+        var pduLength = 5; // unit + fc + sub-function(2) + data(2)
+        WriteMbapHeader(writer, transactionId, (ushort)pduLength);
+        writer.WriteUInt8(unitId);
+        writer.WriteUInt8(ModbusFunctionCodes.Diagnostics);
+        writer.WriteUInt16BE(subFunction);
+        writer.WriteUInt16BE(data);
+        return writer.ToArray();
+    }
+
+    /// <summary>
+    /// Build a Mask Write Register (FC 22) request.
+    /// Result = (Current AND And_Mask) OR (Or_Mask AND NOT(And_Mask))
+    /// </summary>
+    public static byte[] BuildMaskWriteRegister(ushort transactionId, byte unitId,
+        ushort address, ushort andMask, ushort orMask)
+    {
+        using var writer = new PacketWriter(16);
+        var pduLength = 7; // unit + fc + address(2) + andMask(2) + orMask(2)
+        WriteMbapHeader(writer, transactionId, (ushort)pduLength);
+        writer.WriteUInt8(unitId);
+        writer.WriteUInt8(ModbusFunctionCodes.MaskWriteRegister);
+        writer.WriteUInt16BE(address);
+        writer.WriteUInt16BE(andMask);
+        writer.WriteUInt16BE(orMask);
+        return writer.ToArray();
+    }
+
+    /// <summary>
+    /// Build a Read/Write Multiple Registers (FC 23) request.
+    /// </summary>
+    public static byte[] BuildReadWriteMultipleRegisters(ushort transactionId, byte unitId,
+        ushort readAddress, ushort readQuantity,
+        ushort writeAddress, ushort[] writeValues)
+    {
+        var writeByteCount = writeValues.Length * 2;
+        using var writer = new PacketWriter(32 + writeByteCount);
+        // unit + fc + readAddr(2) + readQty(2) + writeAddr(2) + writeQty(2) + byteCount(1) + data
+        var pduLength = 10 + writeByteCount;
+        WriteMbapHeader(writer, transactionId, (ushort)pduLength);
+        writer.WriteUInt8(unitId);
+        writer.WriteUInt8(ModbusFunctionCodes.ReadWriteMultipleRegisters);
+        writer.WriteUInt16BE(readAddress);
+        writer.WriteUInt16BE(readQuantity);
+        writer.WriteUInt16BE(writeAddress);
+        writer.WriteUInt16BE((ushort)writeValues.Length);
+        writer.WriteUInt8((byte)writeByteCount);
+        foreach (var v in writeValues)
+            writer.WriteUInt16BE(v);
+        return writer.ToArray();
+    }
+
+    /// <summary>
+    /// Build a Read FIFO Queue (FC 24) request.
+    /// </summary>
+    public static byte[] BuildReadFifoQueue(ushort transactionId, byte unitId,
+        ushort pointerAddress)
+    {
+        using var writer = new PacketWriter(16);
+        var pduLength = 3; // unit + fc + pointer address(2)
+        WriteMbapHeader(writer, transactionId, (ushort)pduLength);
+        writer.WriteUInt8(unitId);
+        writer.WriteUInt8(ModbusFunctionCodes.ReadFifoQueue);
+        writer.WriteUInt16BE(pointerAddress);
+        return writer.ToArray();
+    }
+
+    /// <summary>
+    /// Build a Read Device Identification (FC 43 / MEI type 14) request.
+    /// </summary>
+    public static byte[] BuildReadDeviceIdentification(ushort transactionId, byte unitId,
+        byte readDeviceIdCode, byte objectId)
+    {
+        using var writer = new PacketWriter(16);
+        var pduLength = 4; // unit + fc + MEI type(1) + read code(1) + object ID(1)
+        WriteMbapHeader(writer, transactionId, (ushort)pduLength);
+        writer.WriteUInt8(unitId);
+        writer.WriteUInt8(ModbusFunctionCodes.EncapsulatedInterfaceTransport);
+        writer.WriteUInt8(0x0E); // MEI type: Read Device Identification
+        writer.WriteUInt8(readDeviceIdCode);
+        writer.WriteUInt8(objectId);
+        return writer.ToArray();
+    }
+
+    /// <summary>
+    /// Build a Read File Record (FC 20) request.
+    /// </summary>
+    public static byte[] BuildReadFileRecord(ushort transactionId, byte unitId,
+        ushort fileNumber, ushort recordNumber, ushort recordLength)
+    {
+        using var writer = new PacketWriter(24);
+        // Sub-request: ref type(1) + file#(2) + record#(2) + length(2) = 7 bytes
+        var subRequestSize = 7;
+        var pduLength = 2 + subRequestSize; // unit + fc + byteCount(1) + sub-request
+        WriteMbapHeader(writer, transactionId, (ushort)pduLength);
+        writer.WriteUInt8(unitId);
+        writer.WriteUInt8(ModbusFunctionCodes.ReadFileRecord);
+        writer.WriteUInt8((byte)subRequestSize);
+        writer.WriteUInt8(0x06); // Reference type (always 0x06)
+        writer.WriteUInt16BE(fileNumber);
+        writer.WriteUInt16BE(recordNumber);
+        writer.WriteUInt16BE(recordLength);
+        return writer.ToArray();
+    }
+
+    /// <summary>
+    /// Build a Write File Record (FC 21) request.
+    /// </summary>
+    public static byte[] BuildWriteFileRecord(ushort transactionId, byte unitId,
+        ushort fileNumber, ushort recordNumber, ReadOnlySpan<byte> recordData)
+    {
+        var recordLength = recordData.Length / 2; // register count
+        using var writer = new PacketWriter(24 + recordData.Length);
+        // Sub-request: ref type(1) + file#(2) + record#(2) + length(2) + data = 7 + data
+        var subRequestSize = 7 + recordData.Length;
+        var pduLength = 2 + subRequestSize; // unit + fc + byteCount(1) + sub-request
+        WriteMbapHeader(writer, transactionId, (ushort)pduLength);
+        writer.WriteUInt8(unitId);
+        writer.WriteUInt8(ModbusFunctionCodes.WriteFileRecord);
+        writer.WriteUInt8((byte)subRequestSize);
+        writer.WriteUInt8(0x06); // Reference type
+        writer.WriteUInt16BE(fileNumber);
+        writer.WriteUInt16BE(recordNumber);
+        writer.WriteUInt16BE((ushort)recordLength);
+        writer.WriteBytes(recordData);
+        return writer.ToArray();
+    }
+
+    /// <summary>
+    /// Build a raw Modbus request with an arbitrary function code and payload.
+    /// </summary>
+    public static byte[] BuildRaw(ushort transactionId, byte unitId,
+        byte functionCode, ReadOnlySpan<byte> payload)
+    {
+        using var writer = new PacketWriter(16 + payload.Length);
+        var pduLength = 1 + payload.Length; // unit + fc + payload
+        WriteMbapHeader(writer, transactionId, (ushort)pduLength);
+        writer.WriteUInt8(unitId);
+        writer.WriteUInt8(functionCode);
+        if (payload.Length > 0)
+            writer.WriteBytes(payload);
         return writer.ToArray();
     }
 

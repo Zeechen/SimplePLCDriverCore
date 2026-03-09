@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Text;
 using SimplePLCDriverCore.Abstractions;
 
 namespace SimplePLCDriverCore.Protocols.Modbus;
@@ -151,6 +152,183 @@ internal static class ModbusTypes
             BinaryPrimitives.ReadUInt16BigEndian(bytes.AsSpan(0, 2)),
             BinaryPrimitives.ReadUInt16BigEndian(bytes.AsSpan(2, 2)),
         ];
+    }
+
+    // ===== Phase 5: Multi-Register Decode (with byte order) =====
+
+    /// <summary>
+    /// Decode a 32-bit float from 2 consecutive register bytes with configurable byte order.
+    /// Input: raw register data (4 bytes, no byte-count prefix).
+    /// </summary>
+    public static float DecodeFloat32(ReadOnlySpan<byte> data, ModbusByteOrder order)
+    {
+        if (data.Length < 4)
+            throw new InvalidOperationException("Float32 requires at least 4 bytes (2 registers).");
+        Span<byte> buf = stackalloc byte[4];
+        data[..4].CopyTo(buf);
+        ModbusByteOrderHelper.Reorder4(buf, order);
+        return BinaryPrimitives.ReadSingleBigEndian(buf);
+    }
+
+    /// <summary>
+    /// Decode a 64-bit double from 4 consecutive register bytes with configurable byte order.
+    /// Input: raw register data (8 bytes, no byte-count prefix).
+    /// </summary>
+    public static double DecodeFloat64(ReadOnlySpan<byte> data, ModbusByteOrder order)
+    {
+        if (data.Length < 8)
+            throw new InvalidOperationException("Float64 requires at least 8 bytes (4 registers).");
+        Span<byte> buf = stackalloc byte[8];
+        data[..8].CopyTo(buf);
+        ModbusByteOrderHelper.Reorder8(buf, order);
+        return BinaryPrimitives.ReadDoubleBigEndian(buf);
+    }
+
+    /// <summary>
+    /// Decode a 32-bit signed integer from 2 consecutive register bytes with configurable byte order.
+    /// </summary>
+    public static int DecodeInt32(ReadOnlySpan<byte> data, ModbusByteOrder order)
+    {
+        if (data.Length < 4)
+            throw new InvalidOperationException("Int32 requires at least 4 bytes (2 registers).");
+        Span<byte> buf = stackalloc byte[4];
+        data[..4].CopyTo(buf);
+        ModbusByteOrderHelper.Reorder4(buf, order);
+        return BinaryPrimitives.ReadInt32BigEndian(buf);
+    }
+
+    /// <summary>
+    /// Decode a 32-bit unsigned integer from 2 consecutive register bytes.
+    /// </summary>
+    public static uint DecodeUInt32(ReadOnlySpan<byte> data, ModbusByteOrder order)
+    {
+        if (data.Length < 4)
+            throw new InvalidOperationException("UInt32 requires at least 4 bytes (2 registers).");
+        Span<byte> buf = stackalloc byte[4];
+        data[..4].CopyTo(buf);
+        ModbusByteOrderHelper.Reorder4(buf, order);
+        return BinaryPrimitives.ReadUInt32BigEndian(buf);
+    }
+
+    /// <summary>
+    /// Decode a 64-bit signed integer from 4 consecutive register bytes.
+    /// </summary>
+    public static long DecodeInt64(ReadOnlySpan<byte> data, ModbusByteOrder order)
+    {
+        if (data.Length < 8)
+            throw new InvalidOperationException("Int64 requires at least 8 bytes (4 registers).");
+        Span<byte> buf = stackalloc byte[8];
+        data[..8].CopyTo(buf);
+        ModbusByteOrderHelper.Reorder8(buf, order);
+        return BinaryPrimitives.ReadInt64BigEndian(buf);
+    }
+
+    /// <summary>
+    /// Decode a 64-bit unsigned integer from 4 consecutive register bytes.
+    /// </summary>
+    public static ulong DecodeUInt64(ReadOnlySpan<byte> data, ModbusByteOrder order)
+    {
+        if (data.Length < 8)
+            throw new InvalidOperationException("UInt64 requires at least 8 bytes (4 registers).");
+        Span<byte> buf = stackalloc byte[8];
+        data[..8].CopyTo(buf);
+        ModbusByteOrderHelper.Reorder8(buf, order);
+        return BinaryPrimitives.ReadUInt64BigEndian(buf);
+    }
+
+    /// <summary>
+    /// Decode a string from register bytes (2 chars per register, ASCII).
+    /// </summary>
+    public static string DecodeString(ReadOnlySpan<byte> data, int registerCount)
+    {
+        var byteCount = registerCount * 2;
+        if (data.Length < byteCount)
+            byteCount = data.Length;
+        var text = Encoding.ASCII.GetString(data[..byteCount]);
+        // Trim null characters
+        var nullIdx = text.IndexOf('\0');
+        return nullIdx >= 0 ? text[..nullIdx] : text;
+    }
+
+    // ===== Phase 5: Multi-Register Encode (with byte order) =====
+
+    /// <summary>
+    /// Encode a 32-bit float as 2 register values with configurable byte order.
+    /// </summary>
+    public static ushort[] EncodeFloat32(float value, ModbusByteOrder order)
+    {
+        var bytes = new byte[4];
+        BinaryPrimitives.WriteSingleBigEndian(bytes, value);
+        ModbusByteOrderHelper.ToWire4(bytes, order);
+        return
+        [
+            BinaryPrimitives.ReadUInt16BigEndian(bytes.AsSpan(0, 2)),
+            BinaryPrimitives.ReadUInt16BigEndian(bytes.AsSpan(2, 2)),
+        ];
+    }
+
+    /// <summary>
+    /// Encode a 64-bit double as 4 register values with configurable byte order.
+    /// </summary>
+    public static ushort[] EncodeFloat64(double value, ModbusByteOrder order)
+    {
+        var bytes = new byte[8];
+        BinaryPrimitives.WriteDoubleBigEndian(bytes, value);
+        ModbusByteOrderHelper.ToWire8(bytes, order);
+        return
+        [
+            BinaryPrimitives.ReadUInt16BigEndian(bytes.AsSpan(0, 2)),
+            BinaryPrimitives.ReadUInt16BigEndian(bytes.AsSpan(2, 2)),
+            BinaryPrimitives.ReadUInt16BigEndian(bytes.AsSpan(4, 2)),
+            BinaryPrimitives.ReadUInt16BigEndian(bytes.AsSpan(6, 2)),
+        ];
+    }
+
+    /// <summary>
+    /// Encode a 32-bit integer as 2 register values with configurable byte order.
+    /// </summary>
+    public static ushort[] EncodeInt32(int value, ModbusByteOrder order)
+    {
+        var bytes = new byte[4];
+        BinaryPrimitives.WriteInt32BigEndian(bytes, value);
+        ModbusByteOrderHelper.ToWire4(bytes, order);
+        return
+        [
+            BinaryPrimitives.ReadUInt16BigEndian(bytes.AsSpan(0, 2)),
+            BinaryPrimitives.ReadUInt16BigEndian(bytes.AsSpan(2, 2)),
+        ];
+    }
+
+    /// <summary>
+    /// Encode a 64-bit integer as 4 register values with configurable byte order.
+    /// </summary>
+    public static ushort[] EncodeInt64(long value, ModbusByteOrder order)
+    {
+        var bytes = new byte[8];
+        BinaryPrimitives.WriteInt64BigEndian(bytes, value);
+        ModbusByteOrderHelper.ToWire8(bytes, order);
+        return
+        [
+            BinaryPrimitives.ReadUInt16BigEndian(bytes.AsSpan(0, 2)),
+            BinaryPrimitives.ReadUInt16BigEndian(bytes.AsSpan(2, 2)),
+            BinaryPrimitives.ReadUInt16BigEndian(bytes.AsSpan(4, 2)),
+            BinaryPrimitives.ReadUInt16BigEndian(bytes.AsSpan(6, 2)),
+        ];
+    }
+
+    /// <summary>
+    /// Encode a string as register values (2 ASCII chars per register).
+    /// </summary>
+    public static ushort[] EncodeString(string value, int registerCount)
+    {
+        var bytes = new byte[registerCount * 2];
+        var strBytes = Encoding.ASCII.GetBytes(value);
+        Array.Copy(strBytes, bytes, Math.Min(strBytes.Length, bytes.Length));
+
+        var regs = new ushort[registerCount];
+        for (int i = 0; i < registerCount; i++)
+            regs[i] = BinaryPrimitives.ReadUInt16BigEndian(bytes.AsSpan(i * 2, 2));
+        return regs;
     }
 
     /// <summary>

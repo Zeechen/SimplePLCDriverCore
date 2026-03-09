@@ -27,6 +27,7 @@
 | P2 (Nice) | Siemens S7-300/400/1200/1500 | S7comm (ISO-on-TCP) | Phase 3 | ✅ Done |
 | P2 (Nice) | Omron NJ/NX/CJ/CP | FINS (TCP/UDP) | Phase 3 | ✅ Done |
 | P3 (Future) | Any Modbus device | Modbus TCP | Phase 4 | ✅ Done |
+| P3 (Future) | Modbus Extended (FC 08/22/23/43, multi-register types, raw API) | Modbus TCP | Phase 5 | 📋 Planned |
 
 ---
 
@@ -913,6 +914,372 @@ For UDTs:
 - [ ] NuGet publish
 
 **Phase 4 totals**: 795 passing tests (113 new Modbus tests added)
+
+### Phase 5: Extended Modbus API (Weeks 17-20)
+
+Phase 4 delivered standard Modbus read/write (FC 01-06, 15-16). Phase 5 extends the Modbus API to cover advanced function codes, multi-register data types with configurable byte order, and a raw command escape hatch for vendor-specific operations. This brings the library to **Modbus Class 2 conformance** and makes it competitive with pymodbus (the most feature-complete Modbus library today).
+
+#### 5.1 Modbus Conformance Context
+
+The Modbus specification defines three conformance classes:
+- **Class 0** (bare minimum): FC 03, FC 16 — ✅ Already done
+- **Class 1** (standard): FC 01-06, FC 15-16 — ✅ Already done (Phase 4)
+- **Class 2** (advanced): FC 08, 20, 21, 22, 23, 24, 43 — **Phase 5 target**
+
+**Library comparison (current state):**
+
+| Feature | pymodbus | libmodbus | NModbus | EasyModbus | **Ours (Phase 4)** | **Ours (Phase 5)** |
+|---------|----------|-----------|---------|------------|---------------------|---------------------|
+| FC 01-06, 15-16 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| FC 08 Diagnostics | ✅ (all sub-FCs) | ❌ | Partial | ❌ | ❌ | ✅ |
+| FC 22 Mask Write | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ |
+| FC 23 Read/Write Multiple | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ |
+| FC 43 Device ID (MEI) | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ |
+| FC 20/21 File Record | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ |
+| FC 24 FIFO Queue | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ |
+| Custom FC (raw) | ✅ (subclass) | Manual | ✅ (handlers) | ❌ | ❌ | ✅ |
+| 32-bit float (all byte orders) | ✅ | ✅ | Manual | Manual | Partial | ✅ |
+| 64-bit double/long | ✅ | ❌ | Manual | Manual | ❌ | ✅ |
+| String decode | ✅ | ❌ | Manual | Manual | ❌ | ✅ |
+| Async/await | ✅ | ❌ | ✅ | ❌ | ✅ | ✅ |
+
+#### 5.2 Implementation Tasks
+
+##### Week 17: Advanced Function Codes (Tier 1 — High Value)
+
+These are the most requested function codes beyond basic read/write, used in real-world VFD control, energy monitoring, and SCADA systems.
+
+- [ ] **FC 22 — Mask Write Register** (`MaskWriteRegisterAsync`)
+  - Atomic bitwise modify: `Result = (Current AND And_Mask) OR (Or_Mask AND NOT(And_Mask))`
+  - Request: MBAP + FC 0x16 + reference address (2 bytes) + AND mask (2 bytes) + OR mask (2 bytes)
+  - Response: Echo of request
+  - Use case: Toggle individual control bits without race conditions (e.g., start/stop bits in a command register)
+  - Add convenience methods: `SetBitAsync(string address, int bit)`, `ClearBitAsync(string address, int bit)`
+
+- [ ] **FC 23 — Read/Write Multiple Registers** (`ReadWriteMultipleRegistersAsync`)
+  - Atomic read + write in a single transaction (write executes first, then read)
+  - Request: MBAP + FC 0x17 + read start (2) + read qty (2) + write start (2) + write qty (2) + byte count (1) + write data
+  - Response: MBAP + FC 0x17 + byte count (1) + read data
+  - Use case: Command/response patterns, reducing round-trips for setpoint changes with feedback read
+
+- [ ] **FC 08 — Diagnostics** (`DiagnosticsAsync`)
+  - Sub-function 0x0000: Return Query Data (loopback echo test)
+  - Sub-function 0x0001: Restart Communications Option
+  - Sub-function 0x0002: Return Diagnostic Register
+  - Sub-function 0x000A: Clear Counters and Diagnostic Register
+  - Sub-function 0x000B-0x0012: Bus/server message and error counters
+  - Request: MBAP + FC 0x08 + sub-function (2 bytes) + data (2 bytes)
+  - Response: MBAP + FC 0x08 + sub-function (2 bytes) + data (2 bytes)
+  - Expose via `ModbusDiagnosticSubFunction` enum for discoverability
+
+##### Week 18: Device Identification & File Records (Tier 2 — Specialized)
+
+- [ ] **FC 43/14 — Read Device Identification** (`ReadDeviceIdentificationAsync`)
+  - MEI type 0x0E with three conformity levels:
+    - Basic (0x01): VendorName, ProductCode, MajorMinorRevision (mandatory objects 0x00-0x02)
+    - Regular (0x02): VendorUrl, ProductName, ModelName, UserApplicationName (objects 0x03-0x06)
+    - Extended (0x03): Vendor-specific objects (0x80-0xFF)
+  - Request: MBAP + FC 0x2B + MEI type 0x0E + read device ID code (1) + object ID (1)
+  - Response: Multi-object with continuation (MoreFollows flag + NextObjectId for paging)
+  - Return model: `ModbusDeviceIdentification` record with `Dictionary<int, string>` for objects
+  - Use case: Automated device discovery, asset inventory, IIoT gateway integration
+
+- [ ] **FC 20 — Read File Record** (`ReadFileRecordAsync`)
+  - Access 6xxxxx extended memory area (file number 1-65535, record 0-9999)
+  - Request: MBAP + FC 0x14 + byte count + sub-request groups (ref type 0x06 + file# + record# + length)
+  - Response: MBAP + FC 0x14 + data length + sub-response groups
+  - Use case: Recipe management, data logging retrieval, firmware download
+
+- [ ] **FC 21 — Write File Record** (`WriteFileRecordAsync`)
+  - Write to 6xxxxx extended memory
+  - Same group structure as FC 20 with data payload
+  - Use case: Recipe upload, configuration backup/restore
+
+- [ ] **FC 24 — Read FIFO Queue** (`ReadFifoQueueAsync`)
+  - Read up to 31 registers from a FIFO queue pointer register
+  - Request: MBAP + FC 0x18 + FIFO pointer address (2 bytes)
+  - Response: MBAP + FC 0x18 + byte count (2) + FIFO count (2) + register values
+  - Use case: Event buffering, data logging queues
+
+##### Week 19: Multi-Register Data Types & Byte Order
+
+The Modbus spec only defines 16-bit registers. Floats, 32-bit integers, 64-bit values, and strings span multiple registers with **vendor-dependent byte ordering**. This is the #1 pain point for Modbus users.
+
+- [ ] **`ModbusByteOrder` enum** — Configurable word/byte ordering
+  ```
+  ABCD  — Big-endian (most common default, "Motorola" order)
+  DCBA  — Little-endian ("Intel" order)
+  BADC  — Big-endian byte-swapped (mid-big, some older devices)
+  CDAB  — Little-endian word-swapped (mid-little, common alternative)
+  ```
+
+- [ ] **`ModbusDataType` enum** — Typed multi-register reads
+  ```
+  Int16        — 1 register, signed 16-bit (existing)
+  UInt16       — 1 register, unsigned 16-bit (existing)
+  Int32        — 2 registers, signed 32-bit
+  UInt32       — 2 registers, unsigned 32-bit
+  Float32      — 2 registers, IEEE 754 single-precision
+  Int64        — 4 registers, signed 64-bit
+  UInt64       — 4 registers, unsigned 64-bit
+  Float64      — 4 registers, IEEE 754 double-precision
+  String       — N registers, 2 chars per register (ASCII)
+  ```
+
+- [ ] **Typed read/write overloads on ModbusDriver**
+  ```csharp
+  // Read a 32-bit float from 2 consecutive holding registers
+  float temp = await device.ReadFloat32Async("HR100", ModbusByteOrder.ABCD);
+
+  // Read a 32-bit integer
+  int count = await device.ReadInt32Async("HR200", ModbusByteOrder.CDAB);
+
+  // Read a string from 10 consecutive registers (20 chars)
+  string name = await device.ReadStringAsync("HR300", registerCount: 10);
+
+  // Write a 64-bit double across 4 registers
+  await device.WriteFloat64Async("HR400", 3.14159, ModbusByteOrder.ABCD);
+  ```
+
+- [ ] **Default byte order on driver construction**
+  ```csharp
+  // Set default byte order at driver level (avoids repeating on every call)
+  var device = PlcDriverFactory.CreateModbus("192.168.1.50",
+      byteOrder: ModbusByteOrder.CDAB);
+  ```
+
+- [ ] **Encode/decode in `ModbusTypes`**
+  - `DecodeFloat32(ReadOnlySpan<byte>, ModbusByteOrder)` — reorder bytes then `BitConverter.ToSingle`
+  - `DecodeFloat64(ReadOnlySpan<byte>, ModbusByteOrder)` — 4 registers → 8 bytes → double
+  - `DecodeInt32/UInt32/Int64/UInt64` — same reorder pattern
+  - `DecodeString(ReadOnlySpan<byte>, int registerCount)` — 2N bytes → ASCII string, trim nulls
+  - Matching `Encode*` methods for writes
+
+##### Week 20: Raw Command API & Testing
+
+- [ ] **`SendRawAsync` — Raw function code escape hatch**
+  ```csharp
+  // Send any function code with arbitrary PDU payload
+  ModbusRawResponse response = await device.SendRawAsync(
+      functionCode: 0x08,     // Diagnostics
+      payload: new byte[] { 0x00, 0x00, 0x12, 0x34 },  // sub-function + data
+      ct);
+
+  // Access raw response
+  byte responseFc = response.FunctionCode;
+  ReadOnlyMemory<byte> data = response.Data;
+  bool isException = response.IsException;
+  byte? exceptionCode = response.ExceptionCode;
+  ```
+  - Builds proper MBAP header automatically (transaction ID, protocol ID, length, unit ID)
+  - Handles exception responses (FC | 0x80) transparently
+  - Use case: Vendor-specific function codes (FC 65-72, FC 100-110), future Modbus extensions, testing
+
+- [ ] **`ModbusRawResponse` model**
+  ```csharp
+  public record ModbusRawResponse(
+      byte FunctionCode,
+      ReadOnlyMemory<byte> Data,
+      bool IsException,
+      byte? ExceptionCode,
+      string? ErrorMessage);
+  ```
+
+- [ ] **Unit tests** (target: 80+ new tests)
+  - FC 22: Mask write request/response encoding, set/clear bit helpers, error handling
+  - FC 23: Read/write multiple request encoding, response parsing, edge cases
+  - FC 08: All diagnostic sub-functions, loopback echo verification
+  - FC 43/14: Device ID parsing with all three conformity levels, multi-object paging
+  - FC 20/21: File record group encoding/decoding
+  - FC 24: FIFO queue response parsing, empty queue, max entries
+  - Multi-register types: All four byte orders × all data types, round-trip encode/decode
+  - String encode/decode: ASCII, null-terminated, odd-length handling
+  - Raw command: Custom FC send/receive, exception handling, invalid FC
+
+- [ ] **Example application** (`Examples/ModbusAdvanced/Program.cs`)
+  - Demonstrate FC 22 mask write (set/clear individual bits)
+  - Demonstrate FC 23 atomic read/write
+  - Demonstrate FC 43 device identification
+  - Demonstrate multi-register float/double reads with byte order config
+  - Demonstrate raw command for vendor-specific FC
+
+- [ ] **Update README.md** with extended Modbus API documentation
+
+#### 5.3 Public API Surface (New Methods on `ModbusDriver`)
+
+```csharp
+public sealed class ModbusDriver : IPlcDriver
+{
+    // --- Existing Phase 4 API (unchanged) ---
+    // ReadAsync, WriteAsync, batch overloads, ConnectAsync, DisconnectAsync
+
+    // --- Phase 5: Advanced Function Codes ---
+
+    /// FC 22 - Atomic bitwise modify of a single holding register.
+    ValueTask<TagResult> MaskWriteRegisterAsync(
+        string address, ushort andMask, ushort orMask, CancellationToken ct = default);
+
+    /// Convenience: set a single bit in a holding register.
+    ValueTask<TagResult> SetBitAsync(
+        string address, int bitPosition, CancellationToken ct = default);
+
+    /// Convenience: clear a single bit in a holding register.
+    ValueTask<TagResult> ClearBitAsync(
+        string address, int bitPosition, CancellationToken ct = default);
+
+    /// FC 23 - Atomic read and write of multiple registers.
+    ValueTask<ModbusReadWriteResult> ReadWriteMultipleRegistersAsync(
+        string readAddress, ushort readCount,
+        string writeAddress, ReadOnlyMemory<short> writeValues,
+        CancellationToken ct = default);
+
+    /// FC 08 - Diagnostics (loopback, counters, restart).
+    ValueTask<ModbusDiagnosticResult> DiagnosticsAsync(
+        ModbusDiagnosticSubFunction subFunction, ushort data = 0,
+        CancellationToken ct = default);
+
+    /// FC 43/14 - Read device identification.
+    ValueTask<ModbusDeviceIdentification> ReadDeviceIdentificationAsync(
+        ModbusDeviceIdLevel level = ModbusDeviceIdLevel.Basic,
+        CancellationToken ct = default);
+
+    /// FC 20 - Read file record.
+    ValueTask<byte[][]> ReadFileRecordAsync(
+        ushort fileNumber, ushort recordNumber, ushort recordLength,
+        CancellationToken ct = default);
+
+    /// FC 21 - Write file record.
+    ValueTask<TagResult> WriteFileRecordAsync(
+        ushort fileNumber, ushort recordNumber, ReadOnlyMemory<byte> data,
+        CancellationToken ct = default);
+
+    /// FC 24 - Read FIFO queue.
+    ValueTask<short[]> ReadFifoQueueAsync(
+        string pointerAddress, CancellationToken ct = default);
+
+    // --- Phase 5: Multi-Register Typed Access ---
+
+    ValueTask<float> ReadFloat32Async(
+        string address, ModbusByteOrder? byteOrder = null, CancellationToken ct = default);
+    ValueTask<double> ReadFloat64Async(
+        string address, ModbusByteOrder? byteOrder = null, CancellationToken ct = default);
+    ValueTask<int> ReadInt32Async(
+        string address, ModbusByteOrder? byteOrder = null, CancellationToken ct = default);
+    ValueTask<uint> ReadUInt32Async(
+        string address, ModbusByteOrder? byteOrder = null, CancellationToken ct = default);
+    ValueTask<long> ReadInt64Async(
+        string address, ModbusByteOrder? byteOrder = null, CancellationToken ct = default);
+    ValueTask<string> ReadStringAsync(
+        string address, ushort registerCount, CancellationToken ct = default);
+
+    ValueTask<TagResult> WriteFloat32Async(
+        string address, float value, ModbusByteOrder? byteOrder = null, CancellationToken ct = default);
+    ValueTask<TagResult> WriteFloat64Async(
+        string address, double value, ModbusByteOrder? byteOrder = null, CancellationToken ct = default);
+    ValueTask<TagResult> WriteInt32Async(
+        string address, int value, ModbusByteOrder? byteOrder = null, CancellationToken ct = default);
+    ValueTask<TagResult> WriteStringAsync(
+        string address, string value, ushort registerCount, CancellationToken ct = default);
+
+    // --- Phase 5: Raw Command Escape Hatch ---
+
+    /// Send any function code with arbitrary payload.
+    ValueTask<ModbusRawResponse> SendRawAsync(
+        byte functionCode, ReadOnlyMemory<byte> payload,
+        CancellationToken ct = default);
+}
+```
+
+#### 5.4 New Types
+
+```csharp
+/// Byte order for multi-register data types (32-bit, 64-bit).
+public enum ModbusByteOrder { ABCD, DCBA, BADC, CDAB }
+
+/// Diagnostic sub-functions for FC 08.
+public enum ModbusDiagnosticSubFunction : ushort
+{
+    ReturnQueryData = 0x0000,
+    RestartCommunications = 0x0001,
+    ReturnDiagnosticRegister = 0x0002,
+    ForceListenOnlyMode = 0x0004,
+    ClearCounters = 0x000A,
+    ReturnBusMessageCount = 0x000B,
+    ReturnBusErrorCount = 0x000C,
+    ReturnBusExceptionCount = 0x000D,
+    ReturnServerMessageCount = 0x000E,
+    ReturnServerNoResponseCount = 0x000F,
+    ReturnServerNakCount = 0x0010,
+    ReturnServerBusyCount = 0x0011,
+    ReturnBusCharOverrunCount = 0x0012,
+}
+
+/// Device identification conformity level for FC 43/14.
+public enum ModbusDeviceIdLevel : byte { Basic = 0x01, Regular = 0x02, Extended = 0x03 }
+
+/// Result of FC 43/14 Read Device Identification.
+public record ModbusDeviceIdentification(
+    byte ConformityLevel,
+    string? VendorName,         // Object 0x00
+    string? ProductCode,        // Object 0x01
+    string? MajorMinorRevision, // Object 0x02
+    string? VendorUrl,          // Object 0x03
+    string? ProductName,        // Object 0x04
+    string? ModelName,          // Object 0x05
+    string? UserApplicationName,// Object 0x06
+    IReadOnlyDictionary<int, string> AllObjects);
+
+/// Result of FC 08 Diagnostics.
+public record ModbusDiagnosticResult(
+    ModbusDiagnosticSubFunction SubFunction,
+    ushort Data,
+    bool IsSuccess,
+    string? ErrorMessage);
+
+/// Result of FC 23 Read/Write Multiple.
+public record ModbusReadWriteResult(
+    short[] ReadValues,
+    bool IsSuccess,
+    string? ErrorMessage);
+
+/// Raw response for SendRawAsync.
+public record ModbusRawResponse(
+    byte FunctionCode,
+    ReadOnlyMemory<byte> Data,
+    bool IsException,
+    byte? ExceptionCode,
+    string? ErrorMessage);
+```
+
+#### 5.5 Files to Create/Modify
+
+**New files:**
+- `src/SimplePLCDriverCore/Protocols/Modbus/ModbusByteOrder.cs` — Byte order enum + reorder helpers
+- `src/SimplePLCDriverCore/Protocols/Modbus/ModbusDiagnostics.cs` — Sub-function enum + result types
+- `src/SimplePLCDriverCore/Protocols/Modbus/ModbusDeviceId.cs` — Device ID types + response parser
+- `src/SimplePLCDriverCore/Protocols/Modbus/ModbusRawResponse.cs` — Raw response model
+- `src/Examples/ModbusAdvanced/Program.cs` — Advanced operations example
+- `tests/SimplePLCDriverCore.Tests/Modbus/ModbusByteOrderTests.cs`
+- `tests/SimplePLCDriverCore.Tests/Modbus/ModbusAdvancedFunctionTests.cs`
+- `tests/SimplePLCDriverCore.Tests/Modbus/ModbusMultiRegisterTests.cs`
+- `tests/SimplePLCDriverCore.Tests/Modbus/ModbusRawCommandTests.cs`
+
+**Modified files:**
+- `src/SimplePLCDriverCore/Protocols/Modbus/ModbusMessage.cs` — Add builders for FC 08, 20, 21, 22, 23, 24, 43
+- `src/SimplePLCDriverCore/Protocols/Modbus/ModbusTypes.cs` — Add multi-register encode/decode with byte order
+- `src/SimplePLCDriverCore/Drivers/ModbusDriver.cs` — Add all new public methods
+- `src/SimplePLCDriverCore/Drivers/PlcDriverFactory.cs` — Add byte order parameter to CreateModbus
+
+#### 5.6 Priority Justification
+
+Implementation is ordered by real-world usage frequency:
+
+1. **Week 17 (FC 22, 23, 08)** — Highest demand. FC 22 Mask Write is essential for bit-level control in VFDs and motor starters. FC 23 reduces latency in control loops. FC 08 is needed for communication health monitoring.
+2. **Week 18 (FC 43, 20, 21, 24)** — Growing importance in IIoT/asset management (FC 43) and recipe/data logging (FC 20/21). FC 24 is rare but trivial to implement.
+3. **Week 19 (Multi-register types)** — The #1 user pain point. Every Modbus user eventually needs 32-bit floats, and byte order confusion causes countless bugs. Providing first-class support with all four byte orders eliminates this friction.
+4. **Week 20 (Raw API + tests)** — The escape hatch ensures users are never blocked by missing function codes. Vendor-specific FCs (65-72, 100-110) are inherently unpredictable, so a raw API is the only practical solution.
+
+**Phase 5 target**: ~80+ new tests, bringing the Modbus test total to ~200+.
 
 ---
 

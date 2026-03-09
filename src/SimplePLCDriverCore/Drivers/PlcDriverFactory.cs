@@ -1,5 +1,6 @@
 using SimplePLCDriverCore.Abstractions;
 using SimplePLCDriverCore.Common;
+using SimplePLCDriverCore.Protocols.Modbus;
 
 namespace SimplePLCDriverCore.Drivers;
 
@@ -147,9 +148,10 @@ public static class PlcDriverFactory
     /// <param name="unitId">Modbus unit/slave ID. Default 1.</param>
     /// <param name="options">Optional connection options.</param>
     public static ModbusDriver CreateModbus(
-        string host, int port = 502, byte unitId = 1, ConnectionOptions? options = null)
+        string host, int port = 502, byte unitId = 1, ConnectionOptions? options = null,
+        ModbusByteOrder byteOrder = ModbusByteOrder.ABCD)
     {
-        return new ModbusDriver(host, port, unitId, options);
+        return new ModbusDriver(host, port, unitId, options, byteOrder);
     }
 
     /// <summary>
@@ -157,9 +159,11 @@ public static class PlcDriverFactory
     /// </summary>
     /// <param name="host">Device IP address or hostname.</param>
     /// <param name="options">Optional connection options.</param>
+    /// <param name="byteOrder">Default byte order for multi-register data types.</param>
     public static ModbusDriver CreateModbusTcp(
-        string host, ConnectionOptions? options = null)
+        string host, ConnectionOptions? options = null,
+        ModbusByteOrder byteOrder = ModbusByteOrder.ABCD)
     {
-        return new ModbusDriver(host, options: options);
+        return new ModbusDriver(host, options: options, byteOrder: byteOrder);
     }
 }
